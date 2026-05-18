@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Plus, Trash2, Search, X, User, MapPin, Mail, Phone, Calendar, Hash,
   CreditCard, Building2, FileText, Edit3, Copy, Code, Loader2, AlertCircle,
+  Upload, FileUp, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -64,6 +65,109 @@ function initials(p: Person): string {
   return ((p.prenom?.[0] || '') + (p.nom?.[0] || '')).toUpperCase();
 }
 
+// ── Import normalization ────────────────────────────────────────────────────
+function normalizeDate(d: any): string {
+  if (!d) return '';
+  const s = String(d).trim();
+  // ISO 8601: 2009-08-23T00:00:00.000+02:00 or 2009-08-23
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // Already DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  // DD-MM-YYYY → DD/MM/YYYY
+  const dash = /^(\d{2})-(\d{2})-(\d{4})$/.exec(s);
+  if (dash) return `${dash[1]}/${dash[2]}/${dash[3]}`;
+  return s;
+}
+
+function normalizeGenre(g: any): string | null {
+  if (!g) return null;
+  const s = String(g).trim().toLowerCase();
+  if (['m', 'h', 'male', 'homme', 'm.'].includes(s)) return 'Homme';
+  if (['f', 'female', 'femme', 'mme', 'mlle'].includes(s)) return 'Femme';
+  if (s === 'autre' || s === 'other' || s === 'x') return 'Autre';
+  return null;
+}
+
+function joinList(v: any): string | null {
+  if (!v) return null;
+  if (Array.isArray(v)) return v.filter(Boolean).map(String).join(' | ') || null;
+  return String(v);
+}
+
+/** Normalize one raw JSON record into PersonInput. Returns null if missing required fields. */
+function normalizeRecord(raw: any): Omit<Person, 'id' | 'created_at' | 'updated_at'> | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const nom         = raw.last_name  || raw.nom    || raw.lastName;
+  const prenom      = raw.first_name || raw.prenom || raw.firstName;
+  const dob         = raw.birth_date || raw.birthdate || raw.date_naissance || raw.dateNaissance;
+  if (!nom || !prenom || !dob) return null;
+
+  const allocPrenom = raw.allocataire_prenom || raw.parent_1?.prenom;
+  const allocNom    = raw.allocataire_nom    || raw.parent_1?.nom;
+  const allocaire   = (allocPrenom || allocNom)
+    ? [allocPrenom, allocNom].filter(Boolean).join(' ')
+    : null;
+
+  return {
+    nom:            String(nom).toUpperCase(),
+    prenom:         String(prenom).toUpperCase(),
+    genre:          normalizeGenre(raw.gender || raw.genre || raw.allocataire_qualite),
+    date_naissance: normalizeDate(dob),
+    adresse:        raw.voie || raw.address || raw.adresse || null,
+    complement:     raw.complement || null,
+    code_postal:    raw.postal_code || raw.code_postal || raw.cp || null,
+    ville:          raw.city || raw.ville || null,
+    allocataire:    allocaire,
+    matricule:      raw.allocataire_matricule || raw.matricule || raw.parent_1?.matricule || null,
+    email_alloc:    joinList(raw.allocataire_email || raw.email || raw.parent_1?.email),
+    tel_alloc:      joinList(raw.allocataire_phone || raw.phone   || raw.parent_1?.phone),
+    iban:           raw.iban || null,
+    bic:            raw.bic  || null,
+    categorie:      raw.provider || raw.categorie || raw.outil || null,
+    ext_id:         raw.identifier || raw.id || null,
+    notes:          raw.source_file || raw.file || null,
+  };
+}
+
+/** Extract array of raw records from any structure (array, single, xEyes wrapper, etc.) */
+function extractRecords(parsed: any): any[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== 'object') return [];
+  if (Array.isArray(parsed.entrees)) return parsed.entrees;
+  if (Array.isArray(parsed.entries)) return parsed.entries;
+  if (Array.isArray(parsed.results)) return parsed.results;
+  if (Array.isArray(parsed.records)) return parsed.records;
+  if (Array.isArray(parsed.data))    return parsed.data;
+  return [parsed];
+}
+
+/** Parse JSON or JSONL (one object per line). Returns array of raw records or throws. */
+function parseInput(text: string): any[] {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error('Entrée vide');
+  // Try JSON first
+  try {
+    const parsed = JSON.parse(trimmed);
+    return extractRecords(parsed);
+  } catch (jsonErr) {
+    // Try JSONL
+    const lines = trimmed.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length > 1) {
+      const out: any[] = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          out.push(...extractRecords(obj));
+        } catch { /* skip bad line */ }
+      }
+      if (out.length) return out;
+    }
+    throw new Error('JSON invalide');
+  }
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 export function PersonsTool() {
   const [list, setList] = useState<Person[]>([]);
@@ -75,6 +179,7 @@ export function PersonsTool() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
 
   const refresh = async () => {
     try {
@@ -210,6 +315,10 @@ export function PersonsTool() {
           <span className="text-foreground font-semibold tabular-nums">{list.length}</span> {list.length > 1 ? 'fiches' : 'fiche'}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setShowImport(true)}
+            className="border border-border hover:bg-muted text-foreground px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors">
+            <Upload className="w-4 h-4" /> Importer JSON
+          </button>
           <button onClick={openCreate}
             className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors">
             <Plus className="w-4 h-4" /> Nouvelle fiche
@@ -312,6 +421,14 @@ export function PersonsTool() {
           onClose={() => setShowEdit(false)}
           mode={editMode}
           saving={saving}
+        />
+      )}
+
+      {/* Import modal */}
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); refresh(); }}
         />
       )}
     </div>
@@ -543,6 +660,211 @@ function Select({ label, value, onChange, options }: {
         className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
         {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
       </select>
+    </div>
+  );
+}
+
+// ── Import modal ────────────────────────────────────────────────────────────
+type Normalized = Omit<Person, 'id' | 'created_at' | 'updated_at'>;
+interface PreviewItem { ok: true; data: Normalized; raw: any }
+interface PreviewError { ok: false; reason: string; raw: any }
+type Preview = PreviewItem | PreviewError;
+
+function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [text, setText] = useState('');
+  const [preview, setPreview] = useState<Preview[] | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0, ok: 0, fail: 0 });
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  const onFile = async (file: File) => {
+    const t = await file.text();
+    setText(t);
+    analyze(t);
+  };
+
+  const analyze = (raw: string) => {
+    setParseError(null);
+    try {
+      const records = parseInput(raw);
+      const items: Preview[] = records.map((r: any) => {
+        const norm = normalizeRecord(r);
+        if (!norm) return { ok: false, reason: 'champs requis manquants (nom, prenom, date_naissance)', raw: r };
+        return { ok: true, data: norm, raw: r };
+      });
+      setPreview(items);
+    } catch (e: any) {
+      setParseError(e.message || 'parse error');
+      setPreview(null);
+    }
+  };
+
+  const doImport = async () => {
+    if (!preview) return;
+    const valid = preview.filter((p): p is PreviewItem => p.ok);
+    if (!valid.length) { toast.error('Rien à importer'); return; }
+
+    setImporting(true);
+    setProgress({ done: 0, total: valid.length, ok: 0, fail: 0 });
+
+    let ok = 0, fail = 0;
+    for (let i = 0; i < valid.length; i++) {
+      try {
+        await apiFetch<Person>('/api/persons', { method: 'POST', body: JSON.stringify(valid[i].data) });
+        ok++;
+      } catch {
+        fail++;
+      }
+      setProgress({ done: i + 1, total: valid.length, ok, fail });
+    }
+
+    setImporting(false);
+    if (ok > 0) toast.success(`${ok} fiche${ok > 1 ? 's' : ''} importée${ok > 1 ? 's' : ''}`,
+      fail ? { description: `${fail} échec${fail > 1 ? 's' : ''}` } : undefined);
+    if (ok === 0 && fail > 0) toast.error('Aucune fiche importée');
+    onDone();
+  };
+
+  const validCount = preview?.filter(p => p.ok).length ?? 0;
+  const errCount   = preview?.filter(p => !p.ok).length ?? 0;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-3xl shadow-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2 flex-shrink-0">
+          <Upload className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-foreground font-semibold">Importer des fiches depuis JSON</h3>
+          <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-muted text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 flex-1 overflow-y-auto space-y-4">
+          {!preview && (
+            <>
+              <div>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Formats acceptés : <strong className="text-foreground">JSON</strong> (objet, tableau, ou wrapper xEyes avec <code className="bg-muted px-1 py-0.5 rounded text-[10px]">entrees</code>) et <strong className="text-foreground">JSONL</strong> (un objet par ligne).
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Champs reconnus : <code className="text-[10px]">last_name/nom</code>, <code className="text-[10px]">first_name/prenom</code>, <code className="text-[10px]">birth_date/birthdate</code>, <code className="text-[10px]">address/voie</code>, <code className="text-[10px]">postal_code</code>, <code className="text-[10px]">city</code>, <code className="text-[10px]">gender</code>, <code className="text-[10px]">provider/outil</code>, <code className="text-[10px]">identifier</code>, allocataire_*…
+                </p>
+              </div>
+
+              <label className="block">
+                <div className="border-2 border-dashed border-border hover:border-primary/50 rounded-lg p-6 text-center cursor-pointer transition-colors">
+                  <FileUp className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-foreground">Glisser un fichier .json/.jsonl ici, ou cliquer pour parcourir</p>
+                  <input type="file" accept=".json,.jsonl,application/json" className="hidden"
+                    onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+                </div>
+              </label>
+
+              <div className="text-center text-xs text-muted-foreground">— ou —</div>
+
+              <div>
+                <label className="block mb-1.5 text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Coller le JSON</label>
+                <textarea value={text} onChange={e => setText(e.target.value)} rows={8}
+                  placeholder='{"last_name": "BUTEZ", "first_name": "AMBROISE", "birth_date": "2009-08-23T00:00:00.000+02:00", ...}'
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring resize-y" />
+              </div>
+
+              {parseError && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{parseError}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {preview && (
+            <>
+              <div className="flex items-center gap-3 flex-wrap p-3 rounded-md bg-muted/40 border border-border">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <span className="text-sm text-foreground">
+                  <strong className="tabular-nums">{validCount}</strong> fiche{validCount > 1 ? 's' : ''} prête{validCount > 1 ? 's' : ''} à importer
+                </span>
+                {errCount > 0 && (
+                  <span className="text-xs text-amber-400">
+                    · {errCount} ignorée{errCount > 1 ? 's' : ''} (champs manquants)
+                  </span>
+                )}
+                <button onClick={() => { setPreview(null); setText(''); }}
+                  className="ml-auto text-xs border border-border rounded-md px-2.5 py-1 hover:bg-muted text-foreground">
+                  Recommencer
+                </button>
+              </div>
+
+              {importing && (
+                <div className="p-3 rounded-md border border-border">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                    <span>Import en cours…</span>
+                    <span className="tabular-nums">{progress.done}/{progress.total}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary transition-all"
+                      style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              )}
+
+              <div className="border border-border rounded-md overflow-hidden">
+                <div className="px-3 py-2 bg-muted/40 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Aperçu
+                </div>
+                <div className="max-h-[40vh] overflow-y-auto">
+                  {preview.map((p, i) => (
+                    <div key={i} className={`px-3 py-2 border-b border-border last:border-0 text-xs flex items-center gap-3 ${
+                      p.ok ? '' : 'bg-amber-500/5'
+                    }`}>
+                      <span className="w-6 text-muted-foreground tabular-nums text-right">{i + 1}</span>
+                      {p.ok ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                          <span className="font-medium text-foreground truncate">
+                            {p.data.prenom} {p.data.nom}
+                          </span>
+                          <span className="text-muted-foreground truncate">
+                            · {p.data.date_naissance}
+                            {p.data.ville && ` · ${p.data.ville}`}
+                            {p.data.categorie && ` · ${p.data.categorie}`}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <span className="text-amber-400">{p.reason}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex gap-2 flex-shrink-0">
+          <button type="button" onClick={onClose} disabled={importing}
+            className="flex-1 border border-border hover:bg-muted disabled:opacity-50 text-foreground py-2 rounded-md text-sm transition-colors">
+            Fermer
+          </button>
+          {!preview ? (
+            <button onClick={() => analyze(text)} disabled={!text.trim()}
+              className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium py-2 rounded-md text-sm transition-colors">
+              Analyser
+            </button>
+          ) : (
+            <button onClick={doImport} disabled={importing || validCount === 0}
+              className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium py-2 rounded-md text-sm flex items-center justify-center gap-2 transition-colors">
+              {importing
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Import…</>
+                : <><Upload className="w-4 h-4" /> Importer {validCount} fiche{validCount > 1 ? 's' : ''}</>}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
