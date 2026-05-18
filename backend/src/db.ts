@@ -38,6 +38,37 @@ db.exec(`
     enabled   INTEGER NOT NULL DEFAULT 1,
     added_at  INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS persons (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Identité (nom, prenom, date_naissance requis)
+    nom             TEXT NOT NULL,
+    prenom          TEXT NOT NULL,
+    genre           TEXT,
+    date_naissance  TEXT NOT NULL,
+    -- Contact
+    adresse         TEXT,
+    complement      TEXT,
+    code_postal     TEXT,
+    ville           TEXT,
+    -- Allocataire
+    allocataire     TEXT,
+    matricule       TEXT,
+    email_alloc     TEXT,
+    tel_alloc       TEXT,
+    -- Bancaire
+    iban            TEXT,
+    bic             TEXT,
+    -- Meta
+    categorie       TEXT,
+    ext_id          TEXT,
+    notes           TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_persons_nom    ON persons (nom, prenom);
+  CREATE INDEX IF NOT EXISTS idx_persons_ville  ON persons (ville);
 `);
 
 export interface Watch {
@@ -118,6 +149,66 @@ export const tokens = {
   remove:  (id: number) => stmtDeleteToken.run(id),
   setEnabled: (id: number, enabled: boolean) => stmtSetEnabled.run(enabled ? 1 : 0, id),
   setLabel:   (id: number, label: string | null) => stmtUpdateLabel.run(label, id),
+};
+
+// ── Persons ─────────────────────────────────────────────────────────────────
+export interface Person {
+  id: number;
+  nom: string;
+  prenom: string;
+  genre: string | null;
+  date_naissance: string;
+  adresse: string | null;
+  complement: string | null;
+  code_postal: string | null;
+  ville: string | null;
+  allocataire: string | null;
+  matricule: string | null;
+  email_alloc: string | null;
+  tel_alloc: string | null;
+  iban: string | null;
+  bic: string | null;
+  categorie: string | null;
+  ext_id: string | null;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export type PersonInput = Omit<Person, 'id' | 'created_at' | 'updated_at'>;
+
+const PERSON_FIELDS = [
+  'nom', 'prenom', 'genre', 'date_naissance',
+  'adresse', 'complement', 'code_postal', 'ville',
+  'allocataire', 'matricule', 'email_alloc', 'tel_alloc',
+  'iban', 'bic', 'categorie', 'ext_id', 'notes',
+] as const;
+
+const stmtListPersons = db.prepare('SELECT * FROM persons ORDER BY updated_at DESC');
+const stmtGetPerson   = db.prepare('SELECT * FROM persons WHERE id = ?');
+const stmtDeletePerson = db.prepare('DELETE FROM persons WHERE id = ?');
+const stmtInsertPerson = db.prepare(`
+  INSERT INTO persons (${PERSON_FIELDS.join(', ')}, created_at, updated_at)
+  VALUES (${PERSON_FIELDS.map(() => '?').join(', ')}, ?, ?)
+`);
+
+export const persons = {
+  list: () => stmtListPersons.all() as Person[],
+  get:  (id: number) => stmtGetPerson.get(id) as Person | undefined,
+  insert: (p: PersonInput) => {
+    const now = Date.now();
+    const values = PERSON_FIELDS.map(f => (p as any)[f] ?? null);
+    const r = stmtInsertPerson.run(...values, now, now);
+    return r.lastInsertRowid as number;
+  },
+  update: (id: number, p: Partial<PersonInput>) => {
+    const fields = PERSON_FIELDS.filter(f => f in p);
+    if (!fields.length) return 0;
+    const sql = `UPDATE persons SET ${fields.map(f => `${f} = ?`).join(', ')}, updated_at = ? WHERE id = ?`;
+    const vals = fields.map(f => (p as any)[f] ?? null);
+    return db.prepare(sql).run(...vals, Date.now(), id).changes;
+  },
+  remove: (id: number) => stmtDeletePerson.run(id).changes,
 };
 
 export const events = {

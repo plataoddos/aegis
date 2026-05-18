@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  LogOut, Globe, Hash, Settings, FileJson, Wifi, Bug, MessageSquare, Code2, ShieldAlert, Eye
+  LogOut, Globe, Hash, Settings, FileJson, Wifi, Bug, MessageSquare, Code2, ShieldAlert, Eye, Users
 } from 'lucide-react';
 import { XEyesImport } from './XEyesImport';
 import { ReseauTool } from './ReseauTool';
@@ -10,6 +10,7 @@ import { VulnTool } from './VulnTool';
 import { DiscordTool } from './DiscordTool';
 import { DomaineTool } from './DomaineTool';
 import { WatcherTool } from './WatcherTool';
+import { PersonsTool } from './PersonsTool';
 
 interface DashboardProps {
   userKey: string;
@@ -35,6 +36,7 @@ const CATEGORIES: Category[] = [
   { id: 'vuln',    name: 'Vulnérabilités',   description: 'Recherche CVE, Shodan InternetDB',                    icon: ShieldAlert,   Component: VulnTool },
   { id: 'discord', name: 'Discord',          description: 'Snowflake, token, invitation, webhook, profil',       icon: MessageSquare, Component: DiscordTool },
   { id: 'watcher', name: 'Discord Watcher',  description: 'Polling REST multi-tokens, présence/statut, push WS', icon: Eye,         badge: 'LIVE', Component: WatcherTool },
+  { id: 'fiches',  name: 'Fiches',           description: 'Base de fiches : identité, contact, allocataire, IBAN', icon: Users,                       Component: PersonsTool },
   { id: 'xeyes',   name: 'Import xEyes',     description: 'Import et consolidation de rapports JSON xEyes',       icon: FileJson,      badge: 'Pro', Component: XEyesImport },
 ];
 
