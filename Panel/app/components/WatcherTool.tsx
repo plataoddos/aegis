@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus, Trash2, Loader2, Search, X, MessageSquare, LogIn, LogOut,
   Mic, MicOff, Volume2, UserCog, Edit3, Activity, AlertCircle,
-  Clock, Radio, Filter, ChevronDown, ChevronUp, ArrowDownToLine,
-  Hash, Server, Eye,
+  Clock, Radio, Filter, ArrowDownToLine,
+  Hash, Server, Eye, TrendingUp, Zap, Wifi, WifiOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -94,7 +94,6 @@ export function WatcherTool() {
   const [wsState,  setWsState]  = useState<'connecting' | 'open' | 'closed'>('closed');
   const [error,    setError]    = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [collapseLeft, setCollapseLeft] = useState(false);
 
   const wsRef    = useRef<WebSocket | null>(null);
   const feedRef  = useRef<HTMLDivElement | null>(null);
@@ -236,14 +235,36 @@ export function WatcherTool() {
   const currentTarget = filterId ? watches.find(w => w.user_id === filterId) : null;
   const currentProfile = filterId ? profiles[filterId] : null;
 
+  // ── Computed: stats ───────────────────────────────────────────────────────
+  const eventsToday = useMemo(() => {
+    const start = new Date(); start.setHours(0,0,0,0);
+    const ts = start.getTime();
+    return events.filter(e => e.created_at >= ts &&
+      (filterId ? e.user_id === filterId : true)).length;
+  }, [events, filterId]);
+
+  const eventsLastHour = useMemo(() => {
+    const ts = Date.now() - 3600_000;
+    return events.filter(e => e.created_at >= ts &&
+      (filterId ? e.user_id === filterId : true)).length;
+  }, [events, filterId]);
+
+  const typeBreakdown = useMemo(() => {
+    const m = new Map<string, number>();
+    const src = filterId ? events.filter(e => e.user_id === filterId) : events;
+    for (const e of src) m.set(e.type, (m.get(e.type) || 0) + 1);
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  }, [events, filterId]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="bg-card border border-border rounded-xl p-10 text-center">
+      <div className="aegis-card aegis-card-edge p-10 text-center">
         <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-3" />
         <h3 className="text-foreground font-semibold mb-1">Backend Watcher injoignable</h3>
         <p className="text-sm text-muted-foreground mb-4 font-mono">{error}</p>
-        <button onClick={refresh} className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted text-foreground">
+        <button onClick={refresh}
+          className="aegis-btn-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium">
           Réessayer
         </button>
       </div>
@@ -251,266 +272,293 @@ export function WatcherTool() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Compact header */}
-      <div className="bg-card border border-border rounded-xl px-5 py-3 flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className={`relative flex h-2.5 w-2.5`}>
-            {wsState === 'open' && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
-            )}
-            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-              wsState === 'open' ? 'bg-emerald-400' : wsState === 'connecting' ? 'bg-amber-400' : 'bg-rose-400'
-            }`}></span>
-          </span>
-          <span className="text-sm text-foreground font-medium">
-            {wsState === 'open' ? 'Stream live' : wsState === 'connecting' ? 'Connexion…' : 'Hors ligne'}
-          </span>
+    <div className="space-y-4 h-full flex flex-col" style={{ height: 'calc(100vh - 112px)' }}>
+
+      {/* ═══ Top status bar ════════════════════════════════════════════════ */}
+      <div className="aegis-card aegis-card-edge px-4 py-2.5 flex items-center gap-3 flex-shrink-0 flex-wrap">
+        {/* Live indicator */}
+        <div className={`flex items-center gap-2 px-3 py-1 rounded-full border ${
+          wsState === 'open'       ? 'bg-emerald-500/10 border-emerald-500/30' :
+          wsState === 'connecting' ? 'bg-amber-500/10  border-amber-500/30'  :
+                                     'bg-rose-500/10   border-rose-500/30'
+        }`}>
+          {wsState === 'open' ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+              </span>
+              <span className="text-xs text-emerald-400 font-medium">LIVE</span>
+            </>
+          ) : wsState === 'connecting' ? (
+            <>
+              <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
+              <span className="text-xs text-amber-400 font-medium">Connexion…</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-3 h-3 text-rose-400" />
+              <span className="text-xs text-rose-400 font-medium">Hors ligne</span>
+            </>
+          )}
         </div>
-        <div className="h-5 w-px bg-border" />
-        <Stat label="Comptes" value={status ? `${status.ready_accounts}/${status.total_accounts}` : '—'} icon={Server} />
-        <Stat label="Serveurs" value={status?.total_guilds ?? '—'} icon={Hash} />
-        <Stat label="Cibles" value={watches.length} icon={Eye} />
-        <Stat label="Events" value={events.length} icon={Radio} />
+
+        <div className="h-5 w-px bg-white/10" />
+
+        {/* Stats inline */}
+        <CompactStat icon={Server} label="Comptes" value={status ? `${status.ready_accounts}/${status.total_accounts}` : '—'} />
+        <CompactStat icon={Hash}    label="Serveurs" value={status?.total_guilds ?? '—'} />
+        <CompactStat icon={Eye}     label="Cibles"   value={watches.length} />
+        <CompactStat icon={Radio}   label="Buffer"   value={events.length} />
+
         <div className="ml-auto flex items-center gap-2">
           <button onClick={refresh} title="Rafraîchir"
-            className="border border-border hover:bg-muted text-foreground p-2 rounded-md transition-colors">
-            <Activity className="w-4 h-4" />
+            className="border border-white/10 hover:bg-white/5 hover:border-white/15 text-muted-foreground hover:text-foreground p-1.5 rounded-lg transition-all">
+            <Activity className="w-3.5 h-3.5" />
           </button>
           <button onClick={() => setShowAdd(true)}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors">
-            <Plus className="w-4 h-4" /> Ajouter une cible
+            className="aegis-btn-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+            <Plus className="w-3.5 h-3.5" /> Cible
           </button>
         </div>
       </div>
 
-      {/* Main 2-column */}
-      <div className={`grid gap-4 ${collapseLeft ? 'lg:grid-cols-[60px_1fr]' : 'lg:grid-cols-[270px_1fr]'} transition-all`}>
+      {/* ═══ Main 2-col grid ═══════════════════════════════════════════════ */}
+      <div className="grid gap-4 lg:grid-cols-[260px_1fr] flex-1 min-h-0">
 
-        {/* Targets sidebar */}
-        <aside className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-[calc(100vh-220px)] min-h-[480px]">
-          <div className="px-3 py-2.5 border-b border-border flex items-center gap-2 flex-shrink-0">
-            <Eye className="w-4 h-4 text-muted-foreground" />
-            {!collapseLeft && (
-              <>
-                <span className="text-sm font-medium text-foreground">Cibles</span>
-                <span className="ml-auto text-xs text-muted-foreground tabular-nums">{watches.length}</span>
-              </>
-            )}
-            <button onClick={() => setCollapseLeft(!collapseLeft)} className="ml-auto p-1 rounded hover:bg-muted text-muted-foreground">
-              {collapseLeft ? <ChevronDown className="w-3.5 h-3.5 -rotate-90" /> : <ChevronUp className="w-3.5 h-3.5 -rotate-90" />}
-            </button>
+        {/* ── Targets sidebar ───────────────────────────────────────────── */}
+        <aside className="aegis-card aegis-card-edge flex flex-col overflow-hidden">
+          <div className="px-3 py-2 border-b border-white/5 flex items-center gap-2 flex-shrink-0">
+            <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Cibles</span>
+            <span className="ml-auto text-[10px] text-muted-foreground/60 tabular-nums">{watches.length}</span>
           </div>
 
-          {!collapseLeft && (
-            <>
-              <button onClick={() => setFilterId(null)}
-                className={`px-4 py-2.5 text-left text-sm border-b border-border transition-colors flex items-center gap-2 ${
-                  !filterId ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50'
-                }`}>
-                <Radio className="w-4 h-4" /> Flux global
-                <span className="ml-auto text-xs tabular-nums">{events.length}</span>
-              </button>
+          <button onClick={() => setFilterId(null)}
+            className={`group flex items-center gap-2.5 px-3 py-2.5 m-2 rounded-lg transition-all ${
+              !filterId ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-white/[0.03]'
+            }`}>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              !filterId ? 'bg-primary/20 text-primary' : 'bg-white/[0.04] text-muted-foreground'
+            }`}>
+              <Radio className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className={`text-sm font-medium ${!filterId ? 'text-foreground' : 'text-muted-foreground'}`}>Flux global</p>
+              <p className="text-[10px] text-muted-foreground/60 tabular-nums">{events.length} events</p>
+            </div>
+          </button>
 
-              <div className="overflow-y-auto flex-1">
-                {sortedWatches.length === 0 ? (
-                  <div className="px-4 py-12 text-center">
-                    <Eye className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground mb-3">Aucune cible</p>
-                    <button onClick={() => setShowAdd(true)} className="text-xs text-foreground border border-border rounded-md px-3 py-1.5 hover:bg-muted">
-                      Ajouter
-                    </button>
-                  </div>
-                ) : sortedWatches.map(w => {
+          <div className="overflow-y-auto flex-1 px-2 pb-2">
+            {sortedWatches.length === 0 ? (
+              <div className="px-2 py-10 text-center">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center mx-auto mb-2">
+                  <Eye className="w-4 h-4 text-primary/60" />
+                </div>
+                <p className="text-xs text-foreground font-medium mb-1">Aucune cible</p>
+                <p className="text-[10px] text-muted-foreground mb-3">Ajoute un ID Discord pour commencer</p>
+                <button onClick={() => setShowAdd(true)}
+                  className="aegis-btn-primary text-primary-foreground rounded-lg px-3 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Ajouter
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {sortedWatches.map(w => {
                   const profile = profiles[w.user_id];
                   const lastSeen = lastSeenByUser.get(w.user_id);
                   const count = eventCountByUser.get(w.user_id) || 0;
-                  const active = filterId === w.user_id;
+                  const isActive = filterId === w.user_id;
+                  const isOnline = lastSeen && (Date.now() - lastSeen) < 5 * 60_000;
                   return (
-                    <div key={w.user_id} className={`group relative border-b border-border last:border-0 transition-colors ${
-                      active ? 'bg-muted' : 'hover:bg-muted/40'
+                    <div key={w.user_id} className={`group relative rounded-lg transition-all ${
+                      isActive ? 'bg-emerald-500/10 ring-1 ring-emerald-500/30' : 'hover:bg-white/[0.03]'
                     }`}>
-                      <button onClick={() => setFilterId(w.user_id)} className="w-full px-3 py-3 pr-12 flex items-center gap-3 text-left">
-                        {profile?.avatar
-                          ? <img src={profile.avatar} alt="" className="w-9 h-9 rounded-full flex-shrink-0 ring-1 ring-border" />
-                          : <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground flex-shrink-0 ring-1 ring-border">
-                              {(w.label || profile?.username || '?').slice(0,2).toUpperCase()}
-                            </div>}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-foreground text-sm truncate font-medium">
-                            {w.label || profile?.global_name || profile?.username || 'Inconnu'}
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono truncate">
-                            {profile?.username ? `@${profile.username}` : w.user_id}
-                          </p>
-                          {lastSeen && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              <span className="inline-block w-1 h-1 rounded-full bg-emerald-400 mr-1.5 align-middle"></span>
-                              actif il y a {fmtRelative(lastSeen)}
-                            </p>
+                      <button onClick={() => setFilterId(w.user_id)} className="w-full px-2.5 py-2 pr-9 flex items-center gap-2.5 text-left">
+                        <div className="relative flex-shrink-0">
+                          {profile?.avatar
+                            ? <img src={profile.avatar} alt="" className="w-9 h-9 rounded-full ring-1 ring-white/10" />
+                            : <div className="w-9 h-9 rounded-full bg-white/[0.04] flex items-center justify-center text-[11px] text-muted-foreground font-semibold ring-1 ring-white/10">
+                                {(w.label || profile?.username || '?').slice(0,2).toUpperCase()}
+                              </div>}
+                          {isOnline && (
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-background aegis-pulse" />
                           )}
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-medium truncate ${isActive ? 'text-foreground' : 'text-foreground/90'}`}>
+                            {w.label || profile?.global_name || profile?.username || 'Inconnu'}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground/70 truncate">
+                            {lastSeen ? `il y a ${fmtRelative(lastSeen)}` : 'jamais vu'}
+                          </p>
+                        </div>
                         {count > 0 && (
-                          <span className="flex-shrink-0 text-xs px-1.5 py-0.5 rounded bg-foreground/10 text-foreground tabular-nums font-medium">
+                          <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-foreground/80 tabular-nums font-bold">
                             {count}
                           </span>
                         )}
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); removeWatch(w.user_id, w.label || profile?.username || w.user_id); }}
-                        className="absolute opacity-0 group-hover:opacity-100 right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-background transition-all"
+                        className="absolute opacity-0 group-hover:opacity-100 right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                         title="Retirer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   );
                 })}
               </div>
-            </>
-          )}
+            )}
+          </div>
         </aside>
 
-        {/* Feed panel */}
-        <section className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-[calc(100vh-220px)] min-h-[480px]">
-          {/* Toolbar */}
-          <div className="border-b border-border flex-shrink-0">
-            <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
-              {/* Title with profile */}
-              <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                {currentTarget ? (
-                  <>
-                    {currentProfile?.avatar
-                      ? <img src={currentProfile.avatar} alt="" className="w-7 h-7 rounded-full flex-shrink-0" />
-                      : <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-[10px] text-muted-foreground flex-shrink-0">?</div>}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {currentTarget.label || currentProfile?.global_name || currentProfile?.username || 'Inconnu'}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground font-mono truncate">{currentTarget.user_id}</p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Radio className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-sm font-medium text-foreground">Flux global</p>
-                    <p className="text-xs text-muted-foreground">— toutes les cibles</p>
-                  </>
-                )}
-              </div>
+        {/* ── Main content (hero + timeline) ────────────────────────────── */}
+        <section className="flex flex-col gap-4 min-h-0">
 
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => setAutoScroll(!autoScroll)}
-                  title={autoScroll ? 'Auto-scroll activé' : 'Auto-scroll désactivé'}
-                  className={`p-1.5 rounded text-xs border transition-colors ${
-                    autoScroll
-                      ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
-                      : 'border-border text-muted-foreground hover:bg-muted'
-                  }`}>
-                  <ArrowDownToLine className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-xs text-muted-foreground tabular-nums">{filteredEvents.length} events</span>
-              </div>
-            </div>
+          {/* Hero — target focus or global dashboard */}
+          {currentTarget ? (
+            <TargetHero
+              target={currentTarget}
+              profile={currentProfile}
+              eventsToday={eventsToday}
+              eventsLastHour={eventsLastHour}
+              eventsTotal={eventCountByUser.get(currentTarget.user_id) || 0}
+              lastSeen={lastSeenByUser.get(currentTarget.user_id)}
+              typeBreakdown={typeBreakdown}
+            />
+          ) : (
+            <GlobalHero
+              eventsToday={eventsToday}
+              eventsLastHour={eventsLastHour}
+              eventsTotal={events.length}
+              activeTargets={Array.from(lastSeenByUser.keys()).filter(id =>
+                (Date.now() - (lastSeenByUser.get(id) || 0)) < 5 * 60_000
+              ).length}
+              typeBreakdown={typeBreakdown}
+            />
+          )}
 
-            {/* Filters row */}
-            <div className="px-4 pb-2.5 flex items-center gap-2 flex-wrap">
-              <div className="relative flex-1 min-w-[180px] max-w-[420px]">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          {/* Timeline panel */}
+          <div className="aegis-card aegis-card-edge flex flex-col overflow-hidden flex-1 min-h-0">
+            {/* Filters bar */}
+            <div className="px-4 py-2.5 border-b border-white/5 flex items-center gap-2 flex-wrap flex-shrink-0">
+              <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Activité</span>
+              <span className="text-[10px] text-muted-foreground/60 tabular-nums">{filteredEvents.length}</span>
+
+              <div className="relative flex-1 min-w-[160px] max-w-xs ml-2">
+                <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Rechercher dans les events…"
-                  className="w-full text-xs bg-input border border-border rounded-md pl-8 pr-7 py-1.5 text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-ring" />
+                  placeholder="Filtrer dans les events…"
+                  className="w-full text-[11px] bg-input/60 border border-white/8 rounded-md pl-7 pr-7 py-1 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/40" />
                 {search && (
-                  <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <button onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                     <X className="w-3 h-3" />
                   </button>
                 )}
               </div>
-              <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+
+              <Filter className="w-3 h-3 text-muted-foreground/70" />
               <div className="flex items-center gap-1">
                 {TYPE_GROUPS.map(g => (
                   <button key={g.id} onClick={() => setTypeGroup(g.id)}
-                    className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${
                       typeGroup === g.id
-                        ? 'border-primary bg-primary/15 text-primary font-medium'
-                        : 'border-border text-muted-foreground hover:bg-muted'
+                        ? 'border-primary/40 bg-primary/15 text-primary font-semibold'
+                        : 'border-white/8 text-muted-foreground hover:bg-white/5 hover:text-foreground'
                     }`}>
                     {g.label}
                   </button>
                 ))}
               </div>
-            </div>
-          </div>
 
-          {/* Timeline */}
-          <div ref={feedRef} className="flex-1 overflow-y-auto">
-            {filteredEvents.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center px-6 py-12">
-                <Activity className="w-10 h-10 text-muted-foreground/40 mb-3" />
-                <p className="text-sm text-muted-foreground mb-1">Aucun événement</p>
-                <p className="text-xs text-muted-foreground/70 max-w-md">
-                  {watches.length === 0
-                    ? "Ajoute une cible pour commencer à tracer son activité sur les serveurs où tes selfbots sont présents."
-                    : "Les events apparaissent ici dès que la cible est active sur un serveur partagé avec un selfbot."}
-                </p>
-              </div>
-            ) : (
-              <ul>
-                {filteredEvents.map((evt, i) => {
-                  const prev = filteredEvents[i - 1];
-                  const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(evt.created_at).toDateString();
-                  return (
-                    <div key={evt.id}>
-                      {showDate && (
-                        <li className="sticky top-0 z-10 px-4 py-1 text-[10px] uppercase tracking-wider font-semibold bg-card/95 backdrop-blur text-muted-foreground border-b border-border">
-                          {new Date(evt.created_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                        </li>
-                      )}
-                      <EventRow evt={evt} profile={profiles[evt.user_id]} watch={watches.find(w => w.user_id === evt.user_id)} />
-                    </div>
-                  );
-                })}
-              </ul>
-            )}
+              <button onClick={() => setAutoScroll(!autoScroll)}
+                title={autoScroll ? 'Auto-scroll : ON' : 'Auto-scroll : OFF'}
+                className={`p-1 rounded-md border transition-all ${
+                  autoScroll
+                    ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-400'
+                    : 'border-white/8 text-muted-foreground hover:bg-white/5'
+                }`}>
+                <ArrowDownToLine className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Timeline body */}
+            <div ref={feedRef} className="flex-1 overflow-y-auto">
+              {filteredEvents.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center px-6 py-12">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 ring-1 ring-primary/20 flex items-center justify-center mb-3">
+                    <Activity className="w-5 h-5 text-primary/60" />
+                  </div>
+                  <p className="text-foreground font-medium mb-1">En attente d'activité</p>
+                  <p className="text-xs text-muted-foreground/70 max-w-md">
+                    {watches.length === 0
+                      ? "Ajoute une cible pour commencer à tracer son activité sur les serveurs partagés avec tes selfbots."
+                      : "Les events apparaissent ici dès que la cible est active."}
+                  </p>
+                </div>
+              ) : (
+                <ul>
+                  {filteredEvents.map((evt, i) => {
+                    const prev = filteredEvents[i - 1];
+                    const showDate = !prev || new Date(prev.created_at).toDateString() !== new Date(evt.created_at).toDateString();
+                    return (
+                      <div key={evt.id}>
+                        {showDate && (
+                          <li className="sticky top-0 z-10 px-4 py-1.5 text-[9px] uppercase tracking-[0.15em] font-bold bg-background/80 backdrop-blur text-muted-foreground/70 border-b border-white/5">
+                            {new Date(evt.created_at).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                          </li>
+                        )}
+                        <EventRow evt={evt} profile={profiles[evt.user_id]} watch={watches.find(w => w.user_id === evt.user_id)} />
+                      </div>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </section>
       </div>
 
       {/* Add modal */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAdd(false)}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-              <Eye className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-foreground font-semibold">Ajouter une cible</h3>
-              <button onClick={() => setShowAdd(false)} className="ml-auto p-1 rounded hover:bg-muted text-muted-foreground">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 aegis-fade-in" onClick={() => setShowAdd(false)}>
+          <div className="aegis-card aegis-card-edge w-full max-w-md aegis-scale-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-white/5 flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center">
+                <Eye className="w-4 h-4 text-emerald-400" />
+              </div>
+              <h3 className="text-foreground font-semibold">Surveiller un nouvel utilisateur</h3>
+              <button onClick={() => setShowAdd(false)} className="ml-auto p-1 rounded hover:bg-white/5 text-muted-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={addWatch} className="p-6 space-y-4">
               <div>
-                <label className="block mb-1.5 text-xs uppercase tracking-wider text-muted-foreground font-semibold">ID Discord</label>
+                <label className="block mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">ID Discord *</label>
                 <input value={newId} onChange={e => setNewId(e.target.value)}
                   placeholder="123456789012345678" autoFocus
-                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring font-mono" />
-                <p className="text-[11px] text-muted-foreground mt-1.5">Snowflake (15-25 chiffres). Active le mode développeur sur Discord pour copier l'ID.</p>
+                  className="w-full bg-input/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 font-mono" />
+                <p className="text-[10px] text-muted-foreground mt-1.5">Snowflake (15-25 chiffres). Active le mode développeur sur Discord pour copier l'ID.</p>
               </div>
               <div>
-                <label className="block mb-1.5 text-xs uppercase tracking-wider text-muted-foreground font-semibold">Label (optionnel)</label>
+                <label className="block mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Label (optionnel)</label>
                 <input value={newLabel} onChange={e => setNewLabel(e.target.value)}
                   placeholder="ex: cible-1, suspect, ami…"
-                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring" />
+                  className="w-full bg-input/60 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40" />
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setShowAdd(false)}
-                  className="flex-1 border border-border hover:bg-muted text-foreground py-2 rounded-md text-sm transition-colors">
+                  className="flex-1 border border-white/10 hover:bg-white/5 text-foreground py-2 rounded-lg text-sm transition-all">
                   Annuler
                 </button>
                 <button type="submit" disabled={adding}
-                  className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-60 text-primary-foreground font-medium py-2 rounded-md text-sm flex items-center justify-center gap-2 transition-colors">
-                  {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  className="flex-1 aegis-btn-primary text-primary-foreground py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2">
+                  {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
                   Surveiller
                 </button>
               </div>
@@ -523,12 +571,165 @@ export function WatcherTool() {
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
-function Stat({ label, value, icon: Icon }: { label: string; value: number | string; icon: any }) {
+function CompactStat({ icon: Icon, label, value }: { icon: any; label: string; value: number | string }) {
   return (
-    <div className="flex items-center gap-1.5 text-sm">
-      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-      <span className="text-muted-foreground">{label}</span>
+    <div className="flex items-center gap-1.5 text-xs">
+      <Icon className="w-3 h-3 text-muted-foreground/70" />
+      <span className="text-muted-foreground/70">{label}</span>
       <span className="text-foreground font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+// ── Hero blocks ─────────────────────────────────────────────────────────────
+function TargetHero({ target, profile, eventsToday, eventsLastHour, eventsTotal, lastSeen, typeBreakdown }: {
+  target: Watch; profile?: Profile;
+  eventsToday: number; eventsLastHour: number; eventsTotal: number;
+  lastSeen?: number;
+  typeBreakdown: [string, number][];
+}) {
+  const isOnline = lastSeen && (Date.now() - lastSeen) < 5 * 60_000;
+  const displayName = target.label || profile?.global_name || profile?.username || 'Inconnu';
+
+  return (
+    <div className="aegis-card aegis-card-edge overflow-hidden flex-shrink-0">
+      <div className="relative px-5 py-4 flex items-center gap-4 flex-wrap">
+        {/* Backdrop gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-primary/5 pointer-events-none" />
+
+        {/* Avatar + name */}
+        <div className="relative flex items-center gap-3">
+          <div className="relative">
+            {profile?.avatar
+              ? <img src={profile.avatar} alt="" className="w-14 h-14 rounded-2xl ring-2 ring-white/10 shadow-lg" />
+              : <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-emerald-500/10 ring-1 ring-emerald-500/40 text-emerald-300 font-bold text-lg flex items-center justify-center">
+                  {displayName.slice(0,2).toUpperCase()}
+                </div>}
+            {isOnline && (
+              <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-400 ring-[3px] ring-background aegis-pulse" />
+            )}
+          </div>
+          <div>
+            <h2 className="text-foreground font-bold text-lg tracking-tight leading-tight">{displayName}</h2>
+            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+              {profile?.username && <span className="font-mono">@{profile.username}</span>}
+              <span className="font-mono opacity-60">{target.user_id}</span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              {isOnline ? (
+                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded px-1.5 py-0.5">
+                  <span className="w-1 h-1 rounded-full bg-emerald-400 aegis-pulse" /> ACTIF
+                </span>
+              ) : lastSeen ? (
+                <span className="text-[10px] text-muted-foreground">Vu il y a {fmtRelative(lastSeen)}</span>
+              ) : (
+                <span className="text-[10px] text-muted-foreground">Aucune activité capturée</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Metric blocks */}
+        <div className="relative ml-auto flex items-stretch gap-2">
+          <MetricBlock icon={Zap}        tone="amber"    label="Last hour" value={eventsLastHour} />
+          <MetricBlock icon={Activity}   tone="emerald"  label="Today"     value={eventsToday} />
+          <MetricBlock icon={TrendingUp} tone="primary"  label="Total"     value={eventsTotal} />
+        </div>
+      </div>
+
+      {/* Type breakdown bar */}
+      {typeBreakdown.length > 0 && (
+        <div className="relative px-5 pb-3 flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-bold">Mix</span>
+          {typeBreakdown.slice(0, 5).map(([type, count]) => {
+            const meta = EVENT_META[type];
+            if (!meta) return null;
+            const Icon = meta.Icon;
+            return (
+              <span key={type} className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${meta.bg} ${meta.color}`}>
+                <Icon className="w-2.5 h-2.5" />
+                <span className="font-semibold">{count}</span>
+                <span className="opacity-70">{meta.label}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GlobalHero({ eventsToday, eventsLastHour, eventsTotal, activeTargets, typeBreakdown }: {
+  eventsToday: number; eventsLastHour: number; eventsTotal: number;
+  activeTargets: number;
+  typeBreakdown: [string, number][];
+}) {
+  return (
+    <div className="aegis-card aegis-card-edge overflow-hidden flex-shrink-0">
+      <div className="relative px-5 py-4 flex items-center gap-4 flex-wrap">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-violet-500/5 pointer-events-none" />
+
+        <div className="relative flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10 ring-1 ring-primary/40 flex items-center justify-center">
+            <Wifi className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-foreground font-bold text-lg tracking-tight leading-tight">Flux global</h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Activité agrégée de toutes les cibles</p>
+            {activeTargets > 0 && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded px-1.5 py-0.5">
+                  <span className="w-1 h-1 rounded-full bg-emerald-400 aegis-pulse" /> {activeTargets} actif{activeTargets > 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="relative ml-auto flex items-stretch gap-2">
+          <MetricBlock icon={Zap}        tone="amber"    label="Last hour" value={eventsLastHour} />
+          <MetricBlock icon={Activity}   tone="emerald"  label="Today"     value={eventsToday} />
+          <MetricBlock icon={TrendingUp} tone="primary"  label="Buffer"    value={eventsTotal} />
+        </div>
+      </div>
+
+      {typeBreakdown.length > 0 && (
+        <div className="relative px-5 pb-3 flex items-center gap-2 flex-wrap">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-bold">Mix</span>
+          {typeBreakdown.slice(0, 5).map(([type, count]) => {
+            const meta = EVENT_META[type];
+            if (!meta) return null;
+            const Icon = meta.Icon;
+            return (
+              <span key={type} className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${meta.bg} ${meta.color}`}>
+                <Icon className="w-2.5 h-2.5" />
+                <span className="font-semibold">{count}</span>
+                <span className="opacity-70">{meta.label}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricBlock({ icon: Icon, tone, label, value }: {
+  icon: any; tone: 'amber' | 'emerald' | 'primary'; label: string; value: number;
+}) {
+  const tones = {
+    amber:   { bg: 'bg-amber-500/10',   ring: 'ring-amber-500/30',   text: 'text-amber-400' },
+    emerald: { bg: 'bg-emerald-500/10', ring: 'ring-emerald-500/30', text: 'text-emerald-400' },
+    primary: { bg: 'bg-primary/10',     ring: 'ring-primary/30',     text: 'text-primary' },
+  };
+  const t = tones[tone];
+  return (
+    <div className={`relative px-3 py-2 rounded-lg ${t.bg} ring-1 ${t.ring} min-w-[90px]`}>
+      <div className="flex items-center gap-1 mb-0.5">
+        <Icon className={`w-3 h-3 ${t.text}`} />
+        <span className={`text-[9px] uppercase tracking-wider font-bold ${t.text} opacity-80`}>{label}</span>
+      </div>
+      <p className="text-foreground text-xl font-bold tabular-nums leading-none">{value}</p>
     </div>
   );
 }

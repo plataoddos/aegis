@@ -124,7 +124,7 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
 
         {/* Module scrolls internally — page never scrolls */}
         <main className="flex-1 overflow-y-auto">
-          <div key={active.id} className="max-w-7xl mx-auto px-6 lg:px-10 py-6 aegis-fade-in">
+          <div key={active.id} className="max-w-[1500px] mx-auto px-5 lg:px-8 pt-5 pb-5 aegis-fade-in">
             <Active />
           </div>
         </main>
@@ -151,7 +151,7 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
         onAdminAccess={onAdminAccess}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-10 py-6 aegis-fade-in flex flex-col overflow-hidden">
+      <main className="flex-1 max-w-[1500px] w-full mx-auto px-5 lg:px-8 pt-5 pb-5 aegis-fade-in flex flex-col overflow-hidden">
         {/* Hero — compact */}
         <section className="flex items-end justify-between gap-6 mb-5 flex-wrap">
           <div>
@@ -227,7 +227,7 @@ interface TopBarProps {
 function TopBar({ username, userInitial, isAdmin, onLogout, onAdminAccess, onHome, breadcrumb }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/5 bg-background/60 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center gap-4">
+      <div className="max-w-[1500px] mx-auto px-5 lg:px-8 h-16 flex items-center gap-4">
         {/* Brand or back */}
         {breadcrumb && onHome ? (
           <button
