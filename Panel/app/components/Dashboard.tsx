@@ -111,7 +111,7 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
   if (active) {
     const Active = active.Component;
     return (
-      <div className="min-h-screen relative">
+      <div className="h-screen overflow-hidden flex flex-col">
         <TopBar
           username={username}
           userInitial={userInitial}
@@ -122,8 +122,9 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
           breadcrumb={active}
         />
 
-        <main className="max-w-7xl mx-auto px-6 lg:px-10 pt-8 pb-16">
-          <div key={active.id} className="aegis-fade-in">
+        {/* Module scrolls internally — page never scrolls */}
+        <main className="flex-1 overflow-y-auto">
+          <div key={active.id} className="max-w-7xl mx-auto px-6 lg:px-10 py-6 aegis-fade-in">
             <Active />
           </div>
         </main>
@@ -141,7 +142,7 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
     : MODULES;
 
   return (
-    <div className="min-h-screen relative">
+    <div className="h-screen overflow-hidden flex flex-col">
       <TopBar
         username={username}
         userInitial={userInitial}
@@ -150,7 +151,7 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
         onAdminAccess={onAdminAccess}
       />
 
-      <main className="max-w-7xl mx-auto px-6 lg:px-10 pt-6 pb-6 aegis-fade-in flex flex-col" style={{ minHeight: 'calc(100vh - 4rem)' }}>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 lg:px-10 py-6 aegis-fade-in flex flex-col overflow-hidden">
         {/* Hero — compact */}
         <section className="flex items-end justify-between gap-6 mb-5 flex-wrap">
           <div>

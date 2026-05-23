@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Plus, Trash2, Search, X, User, MapPin, Mail, Phone, Calendar, Hash,
-  CreditCard, Building2, FileText, Edit3, Copy, Code, Loader2, AlertCircle,
+  Plus, Trash2, Search, X, User, MapPin, Mail, Calendar,
+  CreditCard, FileText, Edit3, Copy, Code, Loader2, AlertCircle,
   Upload, FileUp, CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -291,11 +291,12 @@ export function PersonsTool() {
   // ── Render ────────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="bg-card border border-border rounded-xl p-10 text-center">
+      <div className="aegis-card aegis-card-edge p-10 text-center">
         <AlertCircle className="w-10 h-10 text-destructive mx-auto mb-3" />
         <h3 className="text-foreground font-semibold mb-1">Erreur</h3>
         <p className="text-sm text-muted-foreground mb-4 font-mono">{error}</p>
-        <button onClick={refresh} className="text-sm border border-border rounded-md px-4 py-2 hover:bg-muted text-foreground">
+        <button onClick={refresh}
+          className="aegis-btn-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium">
           Réessayer
         </button>
       </div>
@@ -303,97 +304,117 @@ export function PersonsTool() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="bg-card border border-border rounded-xl px-5 py-3 flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <User className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Fiches</span>
+    <div className="space-y-4 h-full flex flex-col" style={{ height: 'calc(100vh - 112px)' }}>
+      {/* Header — glass card with stats + search + actions */}
+      <div className="aegis-card aegis-card-edge px-5 py-3 flex items-center gap-4 flex-wrap flex-shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500/20 to-indigo-500/0 ring-1 ring-indigo-500/40 flex items-center justify-center">
+            <User className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground leading-tight">Fiches</p>
+            <p className="text-[11px] text-muted-foreground leading-tight">
+              <span className="text-foreground font-semibold tabular-nums">{list.length}</span> {list.length > 1 ? 'fiches enregistrées' : 'fiche enregistrée'}
+            </p>
+          </div>
         </div>
-        <div className="h-5 w-px bg-border" />
-        <span className="text-sm text-muted-foreground">
-          <span className="text-foreground font-semibold tabular-nums">{list.length}</span> {list.length > 1 ? 'fiches' : 'fiche'}
-        </span>
+
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher nom, ville, email, matricule…"
+            className="w-full text-xs bg-input/60 border border-white/8 rounded-lg pl-9 pr-8 py-2 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/40" />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => setShowImport(true)}
-            className="border border-border hover:bg-muted text-foreground px-3 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors">
-            <Upload className="w-4 h-4" /> Importer JSON
+            className="border border-white/10 hover:bg-white/5 hover:border-white/15 text-foreground px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all">
+            <Upload className="w-3.5 h-3.5" /> Importer JSON
           </button>
           <button onClick={openCreate}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors">
-            <Plus className="w-4 h-4" /> Nouvelle fiche
+            className="aegis-btn-primary text-primary-foreground px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+            <Plus className="w-3.5 h-3.5" /> Nouvelle fiche
           </button>
         </div>
       </div>
 
-      {/* Main grid */}
-      <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+      {/* Main grid — fills remaining vertical space */}
+      <div className="grid gap-4 lg:grid-cols-[320px_1fr] flex-1 min-h-0">
 
         {/* List */}
-        <aside className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-[calc(100vh-220px)] min-h-[480px]">
-          <div className="p-3 border-b border-border flex-shrink-0">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Rechercher…"
-                className="w-full text-xs bg-input border border-border rounded-md pl-8 pr-7 py-2 text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-ring" />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
+        <aside className="aegis-card aegis-card-edge flex flex-col overflow-hidden">
           <div className="overflow-y-auto flex-1">
             {loading ? (
               <div className="p-8 text-center text-sm text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" /> Chargement…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="p-8 text-center">
-                <User className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground mb-3">
+              <div className="p-10 text-center">
+                <div className="w-12 h-12 rounded-xl bg-indigo-500/10 ring-1 ring-indigo-500/20 flex items-center justify-center mx-auto mb-3">
+                  <User className="w-5 h-5 text-indigo-400/60" />
+                </div>
+                <p className="text-sm text-foreground font-medium mb-1">
                   {list.length === 0 ? 'Aucune fiche' : 'Aucun résultat'}
                 </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  {list.length === 0 ? 'Crée ta première fiche pour commencer' : 'Essaie un autre terme'}
+                </p>
                 {list.length === 0 && (
-                  <button onClick={openCreate} className="text-xs text-foreground border border-border rounded-md px-3 py-1.5 hover:bg-muted">
-                    Créer la première
+                  <button onClick={openCreate}
+                    className="aegis-btn-primary text-primary-foreground rounded-lg px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Créer la première
                   </button>
                 )}
               </div>
-            ) : filtered.map((p, idx) => {
-              const active = selectedId === p.id;
-              return (
-                <div key={p.id} className={`group relative border-b border-border last:border-0 transition-colors ${
-                  active ? 'bg-muted' : 'hover:bg-muted/40'
-                }`}>
-                  <button onClick={() => setSelectedId(p.id)} className="w-full px-3 py-3 pr-9 flex items-center gap-3 text-left">
-                    <div className="w-9 h-9 rounded-md bg-primary/15 flex items-center justify-center text-xs text-primary font-semibold flex-shrink-0">
-                      {initials(p) || (idx + 1)}
+            ) : (
+              <div className="p-2 space-y-0.5">
+                {filtered.map((p, idx) => {
+                  const isActive = selectedId === p.id;
+                  return (
+                    <div key={p.id} className={`group relative rounded-lg transition-all ${
+                      isActive
+                        ? 'bg-indigo-500/10 ring-1 ring-indigo-500/30'
+                        : 'hover:bg-white/[0.03]'
+                    }`}>
+                      <button onClick={() => setSelectedId(p.id)} className="w-full px-2.5 py-2 pr-9 flex items-center gap-3 text-left">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0 transition-colors ${
+                          isActive
+                            ? 'bg-gradient-to-br from-indigo-500/30 to-indigo-500/10 ring-1 ring-indigo-500/40 text-indigo-300'
+                            : 'bg-white/[0.04] text-muted-foreground group-hover:text-foreground'
+                        }`}>
+                          {initials(p) || (idx + 1)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate transition-colors ${
+                            isActive ? 'text-foreground' : 'text-foreground/90'
+                          }`}>
+                            {p.prenom} {p.nom}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            {[p.ville, fmtDate(p.date_naissance)].filter(Boolean).join(' · ') || p.categorie || '—'}
+                          </p>
+                        </div>
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); remove(p); }}
+                        title="Supprimer"
+                        className="absolute opacity-0 group-hover:opacity-100 right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-foreground text-sm font-medium truncate">
-                        {p.prenom} {p.nom}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {p.categorie || fmtDate(p.date_naissance) || p.ville || '—'}
-                      </p>
-                    </div>
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); remove(p); }}
-                    title="Supprimer"
-                    className="absolute opacity-0 group-hover:opacity-100 right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-background transition-all">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         </aside>
 
         {/* Detail */}
-        <section className="bg-card border border-border rounded-xl overflow-hidden h-[calc(100vh-220px)] min-h-[480px] overflow-y-auto">
+        <section className="aegis-card aegis-card-edge overflow-y-auto">
           {selected ? (
             <PersonDetail
               person={selected}
@@ -404,9 +425,11 @@ export function PersonsTool() {
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center px-6 py-12">
-              <User className="w-10 h-10 text-muted-foreground/40 mb-3" />
-              <p className="text-sm text-muted-foreground mb-1">Aucune fiche sélectionnée</p>
-              <p className="text-xs text-muted-foreground/70">Sélectionne une fiche à gauche ou crée-en une nouvelle.</p>
+              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 ring-1 ring-indigo-500/20 flex items-center justify-center mb-4">
+                <User className="w-7 h-7 text-indigo-400/60" />
+              </div>
+              <p className="text-foreground font-medium mb-1">Aucune fiche sélectionnée</p>
+              <p className="text-xs text-muted-foreground">Sélectionne une fiche à gauche ou crée-en une nouvelle.</p>
             </div>
           )}
         </section>
@@ -443,97 +466,131 @@ function PersonDetail({ person, index, onEdit, onCopyJSON, onCopyAll }: {
   const p = person;
   return (
     <div>
-      {/* Top bar */}
-      <div className="px-6 py-4 flex items-center gap-4 border-b border-border">
-        <div className="w-10 h-10 rounded-md bg-primary/15 text-primary font-semibold flex items-center justify-center text-sm">
-          {index}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-foreground font-bold text-lg uppercase tracking-wide truncate">
-            {p.prenom} {p.nom}
-          </h2>
-          {p.categorie && <p className="text-xs text-muted-foreground uppercase tracking-wider mt-0.5">{p.categorie}</p>}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={onEdit} title="Modifier"
-            className="border border-border hover:bg-muted text-foreground px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition-colors">
-            <Edit3 className="w-3.5 h-3.5" /> Modifier
-          </button>
-          <button onClick={onCopyAll} title="Copier la fiche"
-            className="border border-border hover:bg-muted text-foreground px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition-colors">
-            <Copy className="w-3.5 h-3.5" /> Copier
-          </button>
-          <button onClick={onCopyJSON} title="Copier en JSON"
-            className="border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-md text-xs flex items-center gap-1.5 transition-colors">
-            <Code className="w-3.5 h-3.5" /> JSON
-          </button>
+      {/* Hero header */}
+      <div className="relative px-6 py-5 border-b border-white/5 overflow-hidden">
+        {/* gradient backdrop */}
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-violet-500/5 pointer-events-none" />
+        <div className="relative flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/30 to-indigo-500/10 ring-1 ring-indigo-500/40 text-indigo-300 font-bold flex items-center justify-center text-lg flex-shrink-0 shadow-lg shadow-indigo-500/20">
+            {initials(p) || `#${index}`}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-foreground font-bold text-xl tracking-tight truncate">
+              {p.prenom} {p.nom}
+            </h2>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              {p.date_naissance && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> {fmtDate(p.date_naissance)}
+                </span>
+              )}
+              {p.ville && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> {p.ville}
+                </span>
+              )}
+              {p.categorie && (
+                <span className="text-[10px] uppercase tracking-wider text-indigo-400 font-semibold px-1.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+                  {p.categorie}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button onClick={onEdit} title="Modifier"
+              className="border border-white/10 hover:bg-white/5 hover:border-white/20 text-foreground px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all">
+              <Edit3 className="w-3.5 h-3.5" /> Modifier
+            </button>
+            <button onClick={onCopyAll} title="Copier la fiche"
+              className="border border-white/10 hover:bg-white/5 hover:border-white/20 text-muted-foreground hover:text-foreground p-1.5 rounded-lg transition-all">
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onCopyJSON} title="Copier en JSON"
+              className="border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all">
+              <Code className="w-3.5 h-3.5" /> JSON
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Sections */}
-      <Section title="Identité">
-        <Field icon={User}     iconBg="bg-primary/10"    iconColor="text-primary"     label="Nom"             value={p.nom} />
-        <Field icon={User}     iconBg="bg-primary/10"    iconColor="text-primary"     label="Prénom"          value={p.prenom} />
-        <Field icon={User}     iconBg="bg-primary/10"    iconColor="text-primary"     label="Genre"           value={p.genre} />
-        <Field icon={Calendar} iconBg="bg-purple-500/15" iconColor="text-purple-400"  label="Date de naissance" value={fmtDate(p.date_naissance)} />
-      </Section>
-
-      <Section title="Contact">
-        <Field icon={MapPin} iconBg="bg-orange-500/15" iconColor="text-orange-400" label="Adresse"     value={p.adresse} />
-        <Field icon={MapPin} iconBg="bg-orange-500/15" iconColor="text-orange-400" label="Complément"  value={p.complement} />
-        <Field icon={Hash}   iconBg="bg-amber-500/15"  iconColor="text-amber-400"  label="Code postal" value={p.code_postal} />
-        <Field icon={Building2} iconBg="bg-yellow-500/15" iconColor="text-yellow-400" label="Ville"   value={p.ville} />
-      </Section>
-
-      <Section title="Allocataire">
-        <Field icon={User}  iconBg="bg-emerald-500/15" iconColor="text-emerald-400" label="Allocataire" value={p.allocataire} />
-        <Field icon={Hash}  iconBg="bg-zinc-500/15"    iconColor="text-zinc-400"    label="Matricule"   value={p.matricule}  mono />
-        <Field icon={Mail}  iconBg="bg-sky-500/15"     iconColor="text-sky-400"     label="Email alloc." value={p.email_alloc} />
-        <Field icon={Phone} iconBg="bg-emerald-500/15" iconColor="text-emerald-400" label="Tél. alloc." value={p.tel_alloc} multiline />
-      </Section>
-
-      {(p.iban || p.bic) && (
-        <Section title="Bancaire">
-          <Field icon={CreditCard} iconBg="bg-rose-500/15" iconColor="text-rose-400" label="IBAN" value={p.iban} mono />
-          <Field icon={CreditCard} iconBg="bg-rose-500/15" iconColor="text-rose-400" label="BIC"  value={p.bic}  mono />
+      <div className="px-6 py-5 space-y-5">
+        <Section title="Identité" icon={User} tone="indigo">
+          <Field label="Nom"               value={p.nom} />
+          <Field label="Prénom"            value={p.prenom} />
+          <Field label="Genre"             value={p.genre} />
+          <Field label="Date de naissance" value={fmtDate(p.date_naissance)} />
         </Section>
-      )}
 
-      <Section title="Extra">
-        <Field icon={Hash}     iconBg="bg-zinc-500/15" iconColor="text-zinc-400" label="ID"    value={p.ext_id} mono />
-        <Field icon={FileText} iconBg="bg-zinc-500/15" iconColor="text-zinc-400" label="Notes" value={p.notes} multiline />
-      </Section>
+        <Section title="Contact" icon={MapPin} tone="orange">
+          <Field label="Adresse"     value={p.adresse} />
+          <Field label="Complément"  value={p.complement} />
+          <Field label="Code postal" value={p.code_postal} />
+          <Field label="Ville"       value={p.ville} />
+        </Section>
+
+        <Section title="Allocataire" icon={Mail} tone="emerald">
+          <Field label="Allocataire"  value={p.allocataire} />
+          <Field label="Matricule"    value={p.matricule}    mono />
+          <Field label="Email alloc." value={p.email_alloc}  full />
+          <Field label="Tél. alloc."  value={p.tel_alloc}    multiline full />
+        </Section>
+
+        {(p.iban || p.bic) && (
+          <Section title="Bancaire" icon={CreditCard} tone="rose">
+            <Field label="IBAN" value={p.iban} mono full />
+            <Field label="BIC"  value={p.bic}  mono />
+          </Section>
+        )}
+
+        {(p.ext_id || p.notes) && (
+          <Section title="Extra" icon={FileText} tone="zinc">
+            <Field label="ID externe" value={p.ext_id} mono full />
+            <Field label="Notes"      value={p.notes}  multiline full />
+          </Section>
+        )}
+      </div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+const TONE_STYLE: Record<string, { bg: string; ring: string; text: string }> = {
+  indigo:  { bg: 'bg-indigo-500/10',  ring: 'ring-indigo-500/30',  text: 'text-indigo-400' },
+  orange:  { bg: 'bg-orange-500/10',  ring: 'ring-orange-500/30',  text: 'text-orange-400' },
+  emerald: { bg: 'bg-emerald-500/10', ring: 'ring-emerald-500/30', text: 'text-emerald-400' },
+  rose:    { bg: 'bg-rose-500/10',    ring: 'ring-rose-500/30',    text: 'text-rose-400' },
+  zinc:    { bg: 'bg-zinc-500/10',    ring: 'ring-zinc-500/30',    text: 'text-zinc-400' },
+};
+
+function Section({ title, icon: Icon, tone, children }: {
+  title: string; icon: any; tone: keyof typeof TONE_STYLE; children: React.ReactNode;
+}) {
+  const t = TONE_STYLE[tone];
   return (
-    <>
-      <div className="px-6 py-2 bg-muted/40 border-b border-border">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{title}</p>
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`w-6 h-6 rounded-md ${t.bg} ring-1 ${t.ring} flex items-center justify-center flex-shrink-0`}>
+          <Icon className={`w-3 h-3 ${t.text}`} />
+        </div>
+        <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{title}</h3>
+        <div className="flex-1 h-px bg-white/5" />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 border-b border-border">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 rounded-lg bg-white/[0.02] border border-white/5 p-3">
         {children}
       </div>
-    </>
+    </div>
   );
 }
 
-function Field({ icon: Icon, iconBg, iconColor, label, value, mono, multiline }: {
-  icon: any; iconBg: string; iconColor: string; label: string;
-  value: string | null | undefined; mono?: boolean; multiline?: boolean;
+function Field({ label, value, mono, multiline, full }: {
+  label: string; value: string | null | undefined;
+  mono?: boolean; multiline?: boolean; full?: boolean;
 }) {
   const has = value && value !== '';
   return (
-    <div className="px-4 py-3 border-r border-border last:border-r-0 last:[&_*]:break-words">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <div className={`w-5 h-5 rounded ${iconBg} flex items-center justify-center flex-shrink-0`}>
-          <Icon className={`w-3 h-3 ${iconColor}`} />
-        </div>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
-      </div>
-      <p className={`text-sm ${has ? 'text-foreground font-medium' : 'text-muted-foreground/40'} ${mono ? 'font-mono text-xs' : ''} ${multiline ? 'whitespace-pre-line' : 'truncate'}`}>
+    <div className={full ? 'col-span-2 md:col-span-4' : ''}>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1">{label}</p>
+      <p className={`text-sm ${has ? 'text-foreground' : 'text-muted-foreground/40'} ${mono ? 'font-mono text-xs' : ''} ${multiline ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
         {has ? value : '—'}
       </p>
     </div>
