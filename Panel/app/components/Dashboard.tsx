@@ -150,73 +150,63 @@ export function Dashboard({ userKey, onLogout, onAdminAccess, isAdmin = false }:
         onAdminAccess={onAdminAccess}
       />
 
-      <main className="max-w-7xl mx-auto px-6 lg:px-10 pt-12 pb-16 aegis-fade-in">
-        {/* Hero */}
-        <section className="text-center mb-14">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/20 bg-primary/5 mb-5">
-            <Sparkles className="w-3 h-3 text-primary" />
-            <span className="text-[11px] uppercase tracking-wider text-primary font-semibold">Intelligence Platform</span>
+      <main className="max-w-7xl mx-auto px-6 lg:px-10 pt-6 pb-6 aegis-fade-in flex flex-col" style={{ minHeight: 'calc(100vh - 4rem)' }}>
+        {/* Hero — compact */}
+        <section className="flex items-end justify-between gap-6 mb-5 flex-wrap">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-primary/20 bg-primary/5 mb-2">
+              <Sparkles className="w-3 h-3 text-primary" />
+              <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">Intelligence Platform</span>
+            </div>
+            <h1 className="text-foreground text-2xl lg:text-3xl font-bold tracking-tight">
+              Bienvenue, <span className="bg-gradient-to-r from-primary via-violet-400 to-primary bg-clip-text text-transparent">{username}</span>
+            </h1>
+            <p className="text-muted-foreground text-xs mt-1">Sélectionne un module pour commencer.</p>
           </div>
-          <h1 className="text-foreground text-4xl lg:text-5xl font-bold tracking-tight mb-3">
-            Bienvenue, <span className="bg-gradient-to-r from-primary via-violet-400 to-primary bg-clip-text text-transparent">{username}</span>
-          </h1>
-          <p className="text-muted-foreground text-base max-w-xl mx-auto">
-            Sélectionne un module pour commencer. Tous les outils Aegis sont disponibles ci-dessous.
-          </p>
 
           {/* Search */}
-          <div className="max-w-md mx-auto mt-8">
-            <div className="relative group">
-              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher un module…"
-                className="w-full bg-card/40 backdrop-blur-md border border-white/8 rounded-xl pl-11 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/40 transition-all shadow-lg shadow-black/30"
-              />
-            </div>
+          <div className="relative group w-full sm:w-auto sm:min-w-[280px]">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Rechercher un module…"
+              className="w-full bg-card/40 backdrop-blur-md border border-white/8 rounded-lg pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/40 transition-all shadow-lg shadow-black/30"
+            />
           </div>
         </section>
 
-        {/* Stats strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-12 max-w-3xl mx-auto">
-          <MiniStat label="Modules"  value={MODULES.length}      tone="indigo" />
-          <MiniStat label="Live"     value="✓ Online"             tone="emerald" pulse />
-          <MiniStat label="Sources"  value="70+"                  tone="violet" />
-          <MiniStat label="Cache"    value="24h"                  tone="sky" />
-        </div>
-
-        {/* Module groups */}
-        {GROUPS.map(group => {
-          const items = filtered.filter(m => m.group === group.id);
-          if (items.length === 0) return null;
-          return (
-            <section key={group.id} className="mb-12 last:mb-0">
-              <div className="flex items-end justify-between mb-5 px-1">
-                <div>
-                  <h2 className="text-foreground text-lg font-semibold tracking-tight">{group.label}</h2>
-                  <p className="text-muted-foreground text-xs mt-0.5">{group.description}</p>
+        {/* Module groups — compact, all fits in viewport */}
+        <div className="flex-1 flex flex-col justify-start gap-5">
+          {GROUPS.map(group => {
+            const items = filtered.filter(m => m.group === group.id);
+            if (items.length === 0) return null;
+            return (
+              <section key={group.id}>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-foreground text-sm font-semibold tracking-tight">{group.label}</h2>
+                    <span className="text-[10px] text-muted-foreground/60 tabular-nums">{items.length}</span>
+                  </div>
+                  <p className="text-muted-foreground text-[10px] hidden sm:block">{group.description}</p>
                 </div>
-                <span className="text-[11px] text-muted-foreground/70 tabular-nums">
-                  {items.length} module{items.length > 1 ? 's' : ''}
-                </span>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.map((m, i) => (
-                  <ModuleCard key={m.id} module={m} index={i} onOpen={() => setActiveId(m.id)} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {items.map((m, i) => (
+                    <ModuleCard key={m.id} module={m} index={i} onOpen={() => setActiveId(m.id)} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
 
-        {filtered.length === 0 && (
-          <div className="text-center py-20">
-            <Search className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-muted-foreground">Aucun module ne correspond à ta recherche.</p>
-          </div>
-        )}
+          {filtered.length === 0 && (
+            <div className="text-center py-10">
+              <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-muted-foreground text-sm">Aucun module ne correspond.</p>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
@@ -316,28 +306,24 @@ function ModuleCard({ module: m, index, onOpen }: { module: Module; index: numbe
   return (
     <button
       onClick={onOpen}
-      style={{ animationDelay: `${index * 40}ms` }}
-      className={`group relative aegis-card aegis-card-edge text-left p-5 transition-all duration-300 hover:-translate-y-1 hover:border-white/15 hover:shadow-2xl ${t.glow} aegis-fade-in`}
+      style={{ animationDelay: `${index * 30}ms` }}
+      className={`group relative aegis-card aegis-card-edge text-left px-4 py-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/15 hover:shadow-2xl ${t.glow} aegis-fade-in`}
     >
       {/* Background gradient mesh on hover */}
       <div className={`absolute inset-0 rounded-[inherit] bg-gradient-to-br ${t.from} ${t.to} opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`} />
 
-      <div className="relative flex items-start gap-3 mb-3">
-        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${t.from} ${t.to} ring-1 ${t.ring} flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110`}>
-          <Icon className={`w-5 h-5 ${t.text}`} />
+      <div className="relative flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${t.from} ${t.to} ring-1 ${t.ring} flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110`}>
+          <Icon className={`w-4 h-4 ${t.text}`} />
         </div>
-        {m.badge && (
-          <div className="ml-auto">
-            <Badge tone={m.badgeTone}>{m.badge}</Badge>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-foreground font-semibold text-sm tracking-tight truncate">{m.name}</h3>
+            {m.badge && <Badge tone={m.badgeTone}>{m.badge}</Badge>}
           </div>
-        )}
-        <ArrowUpRight className={`w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-all ${m.badge ? 'absolute top-0 right-0' : 'ml-auto'} group-hover:translate-x-0.5 group-hover:-translate-y-0.5`} />
-      </div>
-
-      <div className="relative">
-        <h3 className="text-foreground font-semibold text-base mb-1 tracking-tight">{m.name}</h3>
-        {m.tagline && <p className="text-foreground/70 text-xs mb-2">{m.tagline}</p>}
-        <p className="text-muted-foreground text-[11px] leading-relaxed">{m.description}</p>
+          {m.tagline && <p className="text-muted-foreground text-[11px] truncate mt-0.5">{m.tagline}</p>}
+        </div>
+        <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-foreground transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 flex-shrink-0" />
       </div>
     </button>
   );
