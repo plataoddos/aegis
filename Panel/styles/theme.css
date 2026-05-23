@@ -79,37 +79,185 @@
   --sidebar-ring: #6366f1;
 }
 
-/* ── Aegis polish ───────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   AEGIS — DESIGN SYSTEM
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Body background — animated mesh gradient + film grain */
 .dark body {
-  background:
-    radial-gradient(ellipse at top, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom, rgba(99, 102, 241, 0.03) 0%, transparent 50%),
-    var(--background);
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 0% 0%,    rgba(99, 102, 241, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 100% 0%,  rgba(168, 85, 247, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 100% 100%,rgba(59, 130, 246, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 0% 100%,  rgba(236, 72, 153, 0.04) 0%, transparent 50%);
+  background-attachment: fixed;
 }
 
-/* Scrollbar — slim & subtle */
+/* Subtle film grain over everything */
+.dark body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  z-index: 100;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Scrollbar — slim, glow on hover */
 .dark ::-webkit-scrollbar { width: 8px; height: 8px; }
 .dark ::-webkit-scrollbar-track { background: transparent; }
 .dark ::-webkit-scrollbar-thumb {
-  background: #27272a;
-  border-radius: 4px;
+  background: #2a2a30;
+  border-radius: 100px;
   border: 2px solid transparent;
   background-clip: padding-box;
+  transition: background 0.2s;
 }
-.dark ::-webkit-scrollbar-thumb:hover { background: #3f3f46; background-clip: padding-box; border: 2px solid transparent; }
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6366f1;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
 
-/* Animations utilitaires */
+/* ── Glass surfaces ─────────────────────────────────────────────────────── */
+.aegis-card {
+  position: relative;
+  background: linear-gradient(135deg, rgba(24,24,27,0.6) 0%, rgba(15,15,17,0.4) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    0 1px 3px rgba(0,0,0,0.5),
+    0 12px 40px -12px rgba(0,0,0,0.7);
+}
+
+.aegis-card-glow {
+  position: relative;
+  background: linear-gradient(135deg, rgba(24,24,27,0.6) 0%, rgba(15,15,17,0.4) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 0 0 1px rgba(99,102,241,0.15),
+    0 0 30px -8px rgba(99,102,241,0.25),
+    0 12px 40px -12px rgba(0,0,0,0.7);
+}
+
+/* Top edge highlight on cards (1px gradient line) */
+.aegis-card-edge::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  pointer-events: none;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.aegis-btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    0 4px 12px -2px rgba(99,102,241,0.4),
+    0 0 0 1px rgba(99,102,241,0.5);
+  transition: all 0.2s ease;
+}
+.aegis-btn-primary:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    0 6px 20px -2px rgba(99,102,241,0.6),
+    0 0 0 1px rgba(99,102,241,0.7);
+  transform: translateY(-1px);
+}
+.aegis-btn-primary:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,0.3),
+    0 2px 6px -1px rgba(99,102,241,0.4);
+}
+
+/* ── Input refinements ──────────────────────────────────────────────────── */
+.dark input:focus, .dark select:focus, .dark textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes aegis-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.aegis-fade-in { animation: aegis-fade-in 0.25s ease-out; }
+.aegis-fade-in { animation: aegis-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@keyframes aegis-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.aegis-scale-in { animation: aegis-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+
+@keyframes aegis-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.aegis-shimmer {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(99,102,241,0.15) 25%,
+    rgba(99,102,241,0.4) 50%,
+    rgba(99,102,241,0.15) 75%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: aegis-shimmer 2.5s linear infinite;
+}
 
 @keyframes aegis-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.6; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.05); }
 }
 .aegis-pulse { animation: aegis-pulse 2s ease-in-out infinite; }
+
+@keyframes aegis-glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+.aegis-glow-pulse { animation: aegis-glow-pulse 3s ease-in-out infinite; }
+
+@keyframes aegis-float-gradient {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  33%      { transform: translate(20px, -20px) rotate(2deg); }
+  66%      { transform: translate(-10px, 15px) rotate(-1deg); }
+}
+
+/* ── Tooltips & micro-states ────────────────────────────────────────────── */
+.aegis-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+/* Smooth focus / hover transitions everywhere */
+.dark button, .dark a, .dark input, .dark select, .dark textarea {
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+  transition-duration: 0.18s;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
 
 @theme inline {
   --color-background: var(--background);
