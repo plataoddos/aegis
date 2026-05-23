@@ -5,6 +5,7 @@ import {
   addToken, removeAccount, setEnabled, setLabel, startAccount, stopAccount, restartAll,
 } from './bots.js';
 import { callSeek, callSeekDryRun, SEEK_CATALOG, getKnownCredits, type SeekKey } from './seek.js';
+import { notifyPersonCreated } from './discordWebhook.js';
 
 export function buildApi(apiToken: string) {
   const r = Router();
@@ -148,7 +149,9 @@ export function buildApi(apiToken: string) {
     }
     try {
       const id = persons.insert(p as PersonInput);
-      res.json(persons.get(id));
+      const created = persons.get(id);
+      if (created) notifyPersonCreated(created); // fire-and-forget Discord webhook
+      res.json(created);
     } catch (e: any) {
       res.status(400).json({ error: e?.message || 'erreur' });
     }
