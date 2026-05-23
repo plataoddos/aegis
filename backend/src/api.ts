@@ -4,6 +4,7 @@ import {
   refreshWatchedIds, listAccounts, fetchProfile, totalGuildCount,
   addToken, removeAccount, setEnabled, setLabel, startAccount, stopAccount, restartAll,
 } from './bots.js';
+import { callSeek, callSeekDryRun, SEEK_CATALOG, getKnownCredits, type SeekKey } from './seek.js';
 
 export function buildApi(apiToken: string) {
   const r = Router();
@@ -164,6 +165,80 @@ export function buildApi(apiToken: string) {
   r.delete('/persons/:id', (req, res) => {
     persons.remove(parseInt(req.params.id, 10));
     res.json({ ok: true });
+  });
+
+  // ── Seek API (see-know.eu proxy) ─────────────────────────────────────────
+  // Generic dispatcher: panel calls /api/seek/<key> with JSON body or query.
+  // Each call:
+  //  - is rate-limited by 24h cache (same input → 0 credit cost)
+  //  - keeps the upstream API key on the server side
+  //  - returns { cached, credits_remaining, data, cost }
+  r.get('/seek/catalog', (_req, res) => {
+    res.json({ catalog: SEEK_CATALOG, credits_remaining: getKnownCredits() });
+  });
+
+  const handleSeek = async (key: SeekKey, req: Request, res: Response) => {
+    const spec = SEEK_CATALOG[key];
+    if (!spec) { res.status(404).json({ error: 'unknown endpoint' }); return; }
+    const fresh = req.query.fresh === '1' || req.body?.fresh === true;
+    try {
+      const result = await callSeek(spec.path, {
+        method: spec.method,
+        cost:   spec.cost,
+        fresh,
+        body:   spec.method === 'POST' ? req.body : undefined,
+        query:  spec.method === 'GET'  ? req.query as any : undefined,
+      });
+      res.status(result.ok ? 200 : 502).json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'seek error' });
+    }
+  };
+
+  // Single dispatch route. Method = GET or POST depending on the endpoint, the
+  // panel just hits POST /api/seek/<key> for POST endpoints and GET otherwise.
+  r.get('/seek/:key',  (req, res) => handleSeek(req.params.key as SeekKey, req, res));
+  r.post('/seek/:key', (req, res) => handleSeek(req.params.key as SeekKey, req, res));
+
+  // ── Preflight: which tasks would hit the cache (free) vs live (paid) ──────
+  // Used by the multi-field "Recherche personne" form to display the real
+  // credit cost before the user commits.
+  r.post('/seek-preflight', async (req, res) => {
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+    const out = tasks.map((t: any) => {
+      const spec = SEEK_CATALOG[t?.key as SeekKey];
+      if (!spec) return { key: t?.key, valid: false, cached: false };
+      try {
+        const r = callSeekDryRun(spec.path, t?.params || {});
+        return { key: t.key, valid: true, cached: r.cached, fetched_at: r.fetched_at, cost: spec.cost };
+      } catch {
+        return { key: t.key, valid: false, cached: false };
+      }
+    });
+    res.json({ tasks: out });
+  });
+
+  // ── Multi-call: run several seek tasks in parallel (with cache) ──────────
+  r.post('/seek-multi', async (req, res) => {
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+    const fresh = req.body?.fresh === true;
+    const results = await Promise.all(tasks.map(async (t: any) => {
+      const spec = SEEK_CATALOG[t?.key as SeekKey];
+      if (!spec) return { key: t?.key, ok: false, error: 'unknown endpoint' };
+      try {
+        const result = await callSeek(spec.path, {
+          method: spec.method,
+          cost:   spec.cost,
+          fresh,
+          body:   spec.method === 'POST' ? t.params : undefined,
+          query:  spec.method === 'GET'  ? t.params : undefined,
+        });
+        return { key: t.key, params: t.params, ...result };
+      } catch (e: any) {
+        return { key: t.key, ok: false, error: e?.message || 'error' };
+      }
+    }));
+    res.json({ results, credits_remaining: getKnownCredits() });
   });
 
   // ── Events ────────────────────────────────────────────────────────────────

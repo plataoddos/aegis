@@ -1,4 +1,4 @@
-# NET.X Watcher Backend
+# Aegis Watcher Backend
 
 Backend Node.js qui maintient un pool de **comptes utilisateurs Discord** (selfbots) connectés au Gateway et capture en temps réel les events des utilisateurs surveillés.
 

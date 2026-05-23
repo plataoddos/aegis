@@ -109,7 +109,7 @@ export function AdminPanel({ onBack }: AdminPanelProps) {
             <span className="text-muted-foreground">/</span>
             <span className="text-foreground font-medium text-sm">Administration</span>
           </div>
-          <img src="/nt3xnb.png" alt="NET.X" className="h-7 w-auto" />
+          <img src="/aegis-logo.png" alt="Aegis" className="h-7 w-auto drop-shadow-[0_0_12px_rgba(99,102,241,0.4)]" />
         </div>
       </header>
 

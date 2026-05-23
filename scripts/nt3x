@@ -1,5 +1,5 @@
 #!/bin/bash
-# NET.X launcher
+# Aegis launcher
 # Usage: nt3x [start|stop|restart|status|logs|install|update|backup|save|reset|open|health]
 
 PROJECT_DIR="/Users/mullvd/Documents/NT3X"
@@ -74,7 +74,7 @@ ensure_env() {
 # ── Commandes ──────────────────────────────────────────────────────────────
 install_deps() {
   ensure_project
-  echo -e "${CYAN}${BOLD}Installation des dépendances NET.X${NC}"
+  echo -e "${CYAN}${BOLD}Installation des dépendances Aegis${NC}"
   if ! command -v npm >/dev/null 2>&1; then
     err "npm introuvable. Installe Node.js (https://nodejs.org)."
     exit 1
@@ -97,7 +97,7 @@ update_deps() {
 }
 
 stop_all() {
-  echo -e "${YELLOW}${BOLD}Arrêt de NET.X${NC}"
+  echo -e "${YELLOW}${BOLD}Arrêt de Aegis${NC}"
   if kill_port $BACKEND_PORT; then ok "Backend arrêté (port $BACKEND_PORT)"
   else                              err "Backend déjà arrêté"
   fi
@@ -113,7 +113,7 @@ start_all() {
   ensure_project
   ensure_env
   ensure_deps
-  echo -e "${CYAN}${BOLD}Démarrage de NET.X${NC}"
+  echo -e "${CYAN}${BOLD}Démarrage de Aegis${NC}"
 
   if lsof -ti:$BACKEND_PORT >/dev/null 2>&1; then
     warn "Port $BACKEND_PORT occupé, libération..."
@@ -140,7 +140,7 @@ start_all() {
   echo ""
   status_all
   echo ""
-  echo -e "${GREEN}${BOLD}NET.X est lancé${NC}"
+  echo -e "${GREEN}${BOLD}Aegis est lancé${NC}"
   echo -e "  Backend : ${CYAN}http://localhost:$BACKEND_PORT${NC}"
   echo -e "  Panel   : ${CYAN}http://localhost:$PANEL_PORT${NC}"
   echo ""
@@ -152,7 +152,7 @@ start_all() {
 
 status_all() {
   ensure_project
-  echo -e "${CYAN}${BOLD}Statut NET.X${NC}"
+  echo -e "${CYAN}${BOLD}Statut Aegis${NC}"
   if lsof -ti:$BACKEND_PORT >/dev/null 2>&1; then
     echo -e "  Backend : ${GREEN}● running${NC} (port $BACKEND_PORT)"
   else
@@ -233,7 +233,7 @@ backup_archive() {
   mkdir -p "$BACKUP_DIR"
   local stamp
   stamp=$(date +%Y-%m-%d_%H%M)
-  local archive="$BACKUP_DIR/NT3X-backup-$stamp.tar.gz"
+  local archive="$BACKUP_DIR/Aegis-backup-$stamp.tar.gz"
   log "Création de l'archive..."
   tar --exclude='*/node_modules' \
       --exclude='*.log' \
@@ -279,7 +279,7 @@ open_panel() {
 
 usage() {
   echo -e "
-${BOLD}NET.X — launcher${NC}
+${BOLD}Aegis — launcher${NC}
 Usage : nt3x <commande>
 
 ${CYAN}Cycle de vie${NC}

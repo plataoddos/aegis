@@ -8,7 +8,7 @@ export const ADMIN_KEY = (import.meta as any).env?.VITE_ADMIN_KEY as string;
 
 if (!ADMIN_KEY) {
   // eslint-disable-next-line no-console
-  console.error('[NET.X] VITE_ADMIN_KEY est manquant — créez un fichier .env.local à la racine de Panel/ avec VITE_ADMIN_KEY=...');
+  console.error('[Aegis] VITE_ADMIN_KEY est manquant — créez un fichier .env.local à la racine de Panel/ avec VITE_ADMIN_KEY=...');
 }
 
 export default function App() {

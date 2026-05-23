@@ -42,41 +42,74 @@
 }
 
 .dark {
-  --background: #0a0a0a;
+  /* Aegis dark theme — pure black + indigo accent */
+  --background: #0a0a0b;
   --foreground: #fafafa;
-  --card: #0f0f0f;
+  --card: #0f0f11;
   --card-foreground: #fafafa;
-  --popover: #0f0f0f;
+  --popover: #131316;
   --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #0a0a0a;
-  --secondary: #1a1a1a;
+  --primary: #6366f1;
+  --primary-foreground: #ffffff;
+  --secondary: #18181b;
   --secondary-foreground: #fafafa;
-  --muted: #1a1a1a;
+  --muted: #18181b;
   --muted-foreground: #a1a1aa;
-  --accent: #262626;
+  --accent: #1f1f23;
   --accent-foreground: #fafafa;
-  --destructive: #7f1d1d;
+  --destructive: #ef4444;
   --destructive-foreground: #fafafa;
-  --border: #27272a;
-  --input: #18181b;
-  --ring: #d4d4d8;
+  --border: #1f1f23;
+  --input: #131316;
+  --ring: #6366f1;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: #fafafa;
-  --chart-2: #d4d4d8;
+  --chart-1: #6366f1;
+  --chart-2: #818cf8;
   --chart-3: #a1a1aa;
   --chart-4: #71717a;
   --chart-5: #52525b;
-  --sidebar: #0a0a0a;
+  --sidebar: #08080a;
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #fafafa;
-  --sidebar-primary-foreground: #0a0a0a;
-  --sidebar-accent: #18181b;
+  --sidebar-primary: #6366f1;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #16161a;
   --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #1f1f23;
-  --sidebar-ring: #d4d4d8;
+  --sidebar-border: #1a1a1e;
+  --sidebar-ring: #6366f1;
 }
+
+/* ── Aegis polish ───────────────────────────────────────────────────────── */
+.dark body {
+  background:
+    radial-gradient(ellipse at top, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom, rgba(99, 102, 241, 0.03) 0%, transparent 50%),
+    var(--background);
+}
+
+/* Scrollbar — slim & subtle */
+.dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+.dark ::-webkit-scrollbar-track { background: transparent; }
+.dark ::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover { background: #3f3f46; background-clip: padding-box; border: 2px solid transparent; }
+
+/* Animations utilitaires */
+@keyframes aegis-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.aegis-fade-in { animation: aegis-fade-in 0.25s ease-out; }
+
+@keyframes aegis-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
+}
+.aegis-pulse { animation: aegis-pulse 2s ease-in-out infinite; }
 
 @theme inline {
   --color-background: var(--background);

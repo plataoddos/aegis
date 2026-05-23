@@ -69,6 +69,17 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_persons_nom    ON persons (nom, prenom);
   CREATE INDEX IF NOT EXISTS idx_persons_ville  ON persons (ville);
+
+  CREATE TABLE IF NOT EXISTS seek_cache (
+    cache_key   TEXT PRIMARY KEY,
+    endpoint    TEXT NOT NULL,
+    params_json TEXT,
+    response    TEXT NOT NULL,
+    credits     INTEGER,
+    fetched_at  INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_seek_cache_fetched ON seek_cache (fetched_at DESC);
 `);
 
 export interface Watch {
@@ -209,6 +220,45 @@ export const persons = {
     return db.prepare(sql).run(...vals, Date.now(), id).changes;
   },
   remove: (id: number) => stmtDeletePerson.run(id).changes,
+};
+
+// ── Seek API cache ──────────────────────────────────────────────────────────
+const stmtGetCache = db.prepare(
+  'SELECT * FROM seek_cache WHERE cache_key = ? AND fetched_at > ?'
+);
+const stmtSetCache = db.prepare(`
+  INSERT INTO seek_cache (cache_key, endpoint, params_json, response, credits, fetched_at)
+  VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(cache_key) DO UPDATE SET
+    response = excluded.response,
+    credits  = excluded.credits,
+    fetched_at = excluded.fetched_at
+`);
+const stmtPruneCache = db.prepare('DELETE FROM seek_cache WHERE fetched_at < ?');
+
+export interface SeekCacheRow {
+  cache_key: string;
+  endpoint: string;
+  params_json: string | null;
+  response: string;
+  credits: number | null;
+  fetched_at: number;
+}
+
+export const seekCache = {
+  /** Returns cached row if not expired (TTL ms ago). */
+  get: (key: string, ttlMs: number) => {
+    const cutoff = Date.now() - ttlMs;
+    return stmtGetCache.get(key, cutoff) as SeekCacheRow | undefined;
+  },
+  set: (key: string, endpoint: string, params: any, response: any, credits: number | null) => {
+    stmtSetCache.run(
+      key, endpoint, params ? JSON.stringify(params) : null,
+      JSON.stringify(response), credits, Date.now()
+    );
+  },
+  /** Drop entries older than `olderThanMs`. */
+  prune: (olderThanMs: number) => stmtPruneCache.run(Date.now() - olderThanMs).changes,
 };
 
 export const events = {

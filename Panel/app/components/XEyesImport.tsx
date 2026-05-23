@@ -198,7 +198,7 @@ export function XEyesImport() {
         logging: false,
       });
       const link = document.createElement('a');
-      link.download = `NT3X_${data.requete.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}.png`;
+      link.download = `Aegis_${data.requete.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 40)}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     } finally {
@@ -265,11 +265,11 @@ export function XEyesImport() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ width: 48, height: 48, background: '#fff', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ color: '#000', fontWeight: 900, fontSize: 22, fontFamily: 'monospace' }}>N</span>
+                  <span style={{ color: '#000', fontWeight: 900, fontSize: 22, fontFamily: 'monospace' }}>A</span>
                 </div>
                 <div>
-                  <p style={{ color: '#fff', fontWeight: 800, fontSize: 18, margin: 0, letterSpacing: 1 }}>NET.X</p>
-                  <p style={{ color: '#666', fontSize: 12, margin: 0 }}>Plateforme d'intelligence OSINT</p>
+                  <p style={{ color: '#fff', fontWeight: 800, fontSize: 18, margin: 0, letterSpacing: 1 }}>AEGIS</p>
+                  <p style={{ color: '#666', fontSize: 12, margin: 0 }}>Intelligence Platform</p>
                 </div>
               </div>
               <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '6px 14px' }}>
@@ -438,7 +438,7 @@ export function XEyesImport() {
 
             {/* Footer */}
             <div style={{ borderTop: '1px solid #1e1e1e', paddingTop: 16, marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#333', fontSize: 12 }}>NET.X OSINT • {dateStr}</span>
+              <span style={{ color: '#333', fontSize: 12 }}>Aegis Intel • {dateStr}</span>
               <span style={{ color: '#333', fontSize: 12 }}>{profiles.length} profil(s) consolidé(s)</span>
             </div>
           </div>
