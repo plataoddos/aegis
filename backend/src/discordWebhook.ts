@@ -1,5 +1,5 @@
 // ── Discord webhook notifier (Fiches) ───────────────────────────────────────
-// Sends minimalist embeds to a Discord channel when a Fiche is created.
+// Sends a minimalist embed to a Discord channel when a Fiche is created.
 // URL can be overridden with PERSONS_WEBHOOK_URL env var.
 
 import type { Person } from './db.js';
@@ -26,9 +26,9 @@ export function notifyPersonCreated(p: Person): void {
   const fields: { name: string; value: string; inline?: boolean }[] = [];
 
   const dob = fmtDate(p.date_naissance);
-  if (dob) fields.push({ name: 'Naissance', value: dob, inline: true });
-  if (p.ville) fields.push({ name: 'Ville', value: p.ville, inline: true });
-  if (p.categorie) fields.push({ name: 'Catégorie', value: p.categorie, inline: true });
+  if (dob)         fields.push({ name: 'Naissance', value: dob,          inline: true });
+  if (p.ville)     fields.push({ name: 'Ville',     value: p.ville,      inline: true });
+  if (p.categorie) fields.push({ name: 'Catégorie', value: p.categorie,  inline: true });
 
   const embed = {
     title: `${p.prenom} ${p.nom}`.trim(),

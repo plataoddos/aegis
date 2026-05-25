@@ -24,6 +24,11 @@ npm-debug.log*
 *.sqlite-shm
 *.sqlite-wal
 
+# Auto-generated master key for at-rest encryption (NEVER commit)
+.master_key
+**/data/.master_key
+backend/data/
+
 # OS
 .DS_Store
 Thumbs.db

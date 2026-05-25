@@ -8,7 +8,7 @@ import {
 import { toast } from 'sonner';
 
 const API_URL   = ((import.meta as any).env?.VITE_WATCHER_API_URL  as string) || 'http://localhost:8787';
-const API_TOKEN = ((import.meta as any).env?.VITE_WATCHER_API_TOKEN as string) || '';
+const getApiToken = () => { try { return localStorage.getItem('aegis_session') || ''; } catch { return ''; } };
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface Watch    { user_id: string; label: string | null; added_at: number }
@@ -62,7 +62,7 @@ function fmtFull(ts: number) {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(API_URL + path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_TOKEN}`, ...(init?.headers || {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiToken()}`, ...(init?.headers || {}) },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -130,7 +130,7 @@ export function WatcherTool() {
     refresh();
     const interval = setInterval(refresh, 20_000);
 
-    const wsUrl = API_URL.replace(/^http/, 'ws') + `/ws?token=${encodeURIComponent(API_TOKEN)}`;
+    const wsUrl = API_URL.replace(/^http/, 'ws') + `/ws?token=${encodeURIComponent(getApiToken())}`;
     setWsState('connecting');
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

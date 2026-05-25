@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import {
   LogOut, Globe, Hash, Settings, FileJson, Wifi, MessageSquare, Code2,
   ShieldAlert, Eye, Users, Search, Telescope, ArrowLeft, ArrowUpRight,
-  Sparkles,
+  Sparkles, Flame,
 } from 'lucide-react';
-import { XEyesImport } from './XEyesImport';
 import { ReseauTool } from './ReseauTool';
 import { WebTool } from './WebTool';
 import { CryptoTool } from './CryptoTool';
@@ -13,7 +12,8 @@ import { DiscordTool } from './DiscordTool';
 import { DomaineTool } from './DomaineTool';
 import { WatcherTool } from './WatcherTool';
 import { PersonsTool } from './PersonsTool';
-import { SeekTool } from './SeekTool';
+import { OsintHub } from './OsintHub';
+import { CanaryTool } from './CanaryTool';
 
 interface DashboardProps {
   userKey: string;
@@ -33,12 +33,14 @@ interface Module {
   badge?: string;
   badgeTone?: 'live' | 'pro' | 'api';
   Component: React.ComponentType;
-  group: 'recon' | 'people' | 'utils';
+  group: 'recon' | 'people' | 'security' | 'utils';
   /** Headline featured on the home grid */
   tagline?: string;
 }
 
 const MODULES: Module[] = [
+  // ── Renseignement (cible unique + multi-critères, OSINT + Seek API)
+  { id: 'osint',   group: 'people', tone: 'violet', name: 'Renseignement',   icon: Telescope,     description: 'Cible unique (auto-détection) ou multi-critères (nom, prénom, naissance…) · sources publiques + Seek API', tagline: 'Recherche universelle multi-sources', badge: 'NEW', badgeTone: 'live', Component: OsintHub },
   // ── Reconnaissance & infra
   { id: 'domaine', group: 'recon', tone: 'sky',     name: 'Domaine',         icon: Globe,         description: 'IP, DNS, WHOIS, sous-domaines, reverse DNS',                 tagline: 'Cartographie réseau & infrastructure',     Component: DomaineTool },
   { id: 'reseau',  group: 'recon', tone: 'cyan',    name: 'Réseau',          icon: Wifi,          description: 'Ping, scan de ports, traceroute, SSL/TLS',                   tagline: 'Diagnostic temps réel des hôtes',          Component: ReseauTool },
@@ -46,18 +48,19 @@ const MODULES: Module[] = [
   { id: 'vuln',    group: 'recon', tone: 'rose',    name: 'Vulnérabilités',  icon: ShieldAlert,   description: 'Recherche CVE, Shodan InternetDB',                           tagline: 'Veille CVE et exposition publique',        Component: VulnTool },
   // ── People intelligence
   { id: 'fiches',  group: 'people', tone: 'indigo', name: 'Fiches',          icon: Users,         description: 'Identité, contact, allocataire, IBAN',                      tagline: 'Base de personnes structurée',             Component: PersonsTool },
-  { id: 'seek',    group: 'people', tone: 'violet', name: 'Seek',            icon: Telescope,     description: 'Recherche multi-source via see-know.eu',                    tagline: '70+ sources, cache 24h, proxy sécurisé',   badge: 'API',  badgeTone: 'api',  Component: SeekTool },
   { id: 'discord', group: 'people', tone: 'sky',    name: 'Discord',         icon: MessageSquare, description: 'Snowflake, token, invitation, webhook, profil',             tagline: 'Décodage et profilage Discord',            Component: DiscordTool },
   { id: 'watcher', group: 'people', tone: 'emerald',name: 'Discord Watcher', icon: Eye,           description: 'Surveillance temps réel multi-tokens',                      tagline: 'Pool selfbot, push WS, événements live',   badge: 'LIVE', badgeTone: 'live', Component: WatcherTool },
+  // ── Sécurité défensive
+  { id: 'canary',  group: 'security', tone: 'rose', name: 'Canaris',         icon: Flame,         description: 'Honeytokens — URL invisible, pixel email, redirection. Alerte sur intrusion.', tagline: 'Triggers d\'alerte / honeytokens', badge: 'NEW', badgeTone: 'live', Component: CanaryTool },
   // ── Utilitaires
   { id: 'crypto',  group: 'utils',  tone: 'amber',  name: 'Crypto',          icon: Hash,          description: 'Hachage, encodage, mots de passe, JWT',                     tagline: 'Couteau-suisse cryptographique',           Component: CryptoTool },
-  { id: 'xeyes',   group: 'utils',  tone: 'rose',   name: 'Import xEyes',    icon: FileJson,      description: 'Import et consolidation de rapports JSON',                  tagline: 'Fusion intelligente de rapports',          badge: 'PRO',  badgeTone: 'pro',  Component: XEyesImport },
 ];
 
 const GROUPS: { id: Module['group']; label: string; description: string }[] = [
   { id: 'recon',  label: 'Reconnaissance', description: 'Cartographie infrastructure & réseau' },
-  { id: 'people', label: 'People Intel',   description: 'Recherche, surveillance et données personnelles' },
-  { id: 'utils',  label: 'Utilitaires',    description: 'Outils transverses et import' },
+  { id: 'people',   label: 'People Intel',  description: 'Recherche, surveillance et données personnelles' },
+  { id: 'security', label: 'Sécurité',      description: 'Détection d\'intrusion & honeytokens' },
+  { id: 'utils',    label: 'Utilitaires',   description: 'Outils transverses et import' },
 ];
 
 const TONE_GRADIENTS: Record<Tone, { from: string; to: string; ring: string; glow: string; text: string }> = {
@@ -308,7 +311,7 @@ function ModuleCard({ module: m, index, onOpen }: { module: Module; index: numbe
     <button
       onClick={onOpen}
       style={{ animationDelay: `${index * 30}ms` }}
-      className={`group relative aegis-card aegis-card-edge text-left px-4 py-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/15 hover:shadow-2xl ${t.glow} aegis-fade-in`}
+      className={`group relative aegis-card aegis-card-edge aegis-tilt text-left px-4 py-3 transition-all duration-300 hover:border-white/15 hover:shadow-2xl ${t.glow} aegis-fade-in`}
     >
       {/* Background gradient mesh on hover */}
       <div className={`absolute inset-0 rounded-[inherit] bg-gradient-to-br ${t.from} ${t.to} opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`} />

@@ -7,7 +7,7 @@ import {
 import { toast } from 'sonner';
 
 const API_URL   = ((import.meta as any).env?.VITE_WATCHER_API_URL  as string) || 'http://localhost:8787';
-const API_TOKEN = ((import.meta as any).env?.VITE_WATCHER_API_TOKEN as string) || '';
+const getApiToken = () => { try { return localStorage.getItem('aegis_session') || ''; } catch { return ''; } };
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface Person {
@@ -44,7 +44,7 @@ const EMPTY_FORM: Omit<Person, 'id' | 'created_at' | 'updated_at'> = {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(API_URL + path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_TOKEN}`, ...(init?.headers || {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiToken()}`, ...(init?.headers || {}) },
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -104,11 +104,12 @@ function normalizeRecord(raw: any): Omit<Person, 'id' | 'created_at' | 'updated_
   const dob         = raw.birth_date || raw.birthdate || raw.date_naissance || raw.dateNaissance;
   if (!nom || !prenom || !dob) return null;
 
+  // Allocataire: prefer native `allocataire` field; otherwise reconstruct from xEyes-style parts
   const allocPrenom = raw.allocataire_prenom || raw.parent_1?.prenom;
   const allocNom    = raw.allocataire_nom    || raw.parent_1?.nom;
-  const allocaire   = (allocPrenom || allocNom)
-    ? [allocPrenom, allocNom].filter(Boolean).join(' ')
-    : null;
+  const allocaire =
+    raw.allocataire ||
+    ((allocPrenom || allocNom) ? [allocPrenom, allocNom].filter(Boolean).join(' ') : null);
 
   return {
     nom:            String(nom).toUpperCase(),
@@ -121,13 +122,14 @@ function normalizeRecord(raw: any): Omit<Person, 'id' | 'created_at' | 'updated_
     ville:          raw.city || raw.ville || null,
     allocataire:    allocaire,
     matricule:      raw.allocataire_matricule || raw.matricule || raw.parent_1?.matricule || null,
-    email_alloc:    joinList(raw.allocataire_email || raw.email || raw.parent_1?.email),
-    tel_alloc:      joinList(raw.allocataire_phone || raw.phone   || raw.parent_1?.phone),
+    // Native `email_alloc`/`tel_alloc` first (round-trip), fall back to xEyes-style keys
+    email_alloc:    raw.email_alloc || joinList(raw.allocataire_email || raw.email || raw.parent_1?.email),
+    tel_alloc:      raw.tel_alloc   || joinList(raw.allocataire_phone || raw.phone || raw.parent_1?.phone),
     iban:           raw.iban || null,
     bic:            raw.bic  || null,
-    categorie:      raw.provider || raw.categorie || raw.outil || null,
-    ext_id:         raw.identifier || raw.id || null,
-    notes:          raw.source_file || raw.file || null,
+    categorie:      raw.categorie || raw.provider || raw.outil || null,
+    ext_id:         raw.ext_id || raw.identifier || raw.id || null,
+    notes:          raw.notes || raw.source_file || raw.file || null,
   };
 }
 
@@ -529,12 +531,14 @@ function PersonDetail({ person, index, onEdit, onCopyJSON, onCopyAll }: {
           <Field label="Ville"       value={p.ville} />
         </Section>
 
-        <Section title="Allocataire" icon={Mail} tone="emerald">
-          <Field label="Allocataire"  value={p.allocataire} />
-          <Field label="Matricule"    value={p.matricule}    mono />
-          <Field label="Email alloc." value={p.email_alloc}  full />
-          <Field label="Tél. alloc."  value={p.tel_alloc}    multiline full />
-        </Section>
+        {(p.allocataire || p.matricule || p.email_alloc || p.tel_alloc) && (
+          <Section title="Allocataire" icon={Mail} tone="emerald">
+            <Field label="Allocataire"  value={p.allocataire} />
+            <Field label="Matricule"    value={p.matricule}    mono />
+            <Field label="Email alloc." value={p.email_alloc}  full />
+            <Field label="Tél. alloc."  value={p.tel_alloc}    multiline full />
+          </Section>
+        )}
 
         {(p.iban || p.bic) && (
           <Section title="Bancaire" icon={CreditCard} tone="rose">

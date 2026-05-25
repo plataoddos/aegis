@@ -105,6 +105,22 @@
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* Holographic grid overlay (very subtle, fixed) — adds 3D depth */
+.dark body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, rgba(99,102,241,0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99,102,241,0.04) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 30%, #000 30%, transparent 80%);
+}
+
 /* Scrollbar — slim, glow on hover */
 .dark ::-webkit-scrollbar { width: 8px; height: 8px; }
 .dark ::-webkit-scrollbar-track { background: transparent; }
@@ -125,21 +141,22 @@
 .aegis-card {
   position: relative;
   background: linear-gradient(135deg, rgba(24,24,27,0.6) 0%, rgba(15,15,17,0.4) 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 16px;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.04),
     0 1px 3px rgba(0,0,0,0.5),
     0 12px 40px -12px rgba(0,0,0,0.7);
+  z-index: 1;
 }
 
 .aegis-card-glow {
   position: relative;
   background: linear-gradient(135deg, rgba(24,24,27,0.6) 0%, rgba(15,15,17,0.4) 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
   border: 1px solid rgba(99,102,241,0.2);
   border-radius: 16px;
   box-shadow:
@@ -147,6 +164,7 @@
     0 0 0 1px rgba(99,102,241,0.15),
     0 0 30px -8px rgba(99,102,241,0.25),
     0 12px 40px -12px rgba(0,0,0,0.7);
+  z-index: 1;
 }
 
 /* Top edge highlight on cards (1px gradient line) */
@@ -158,6 +176,144 @@
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
   pointer-events: none;
 }
+
+/* ── Futuristic surfaces (3D, holographic borders, depth) ─────────────────── */
+
+/* Conic gradient border that slowly rotates — feels alive */
+@keyframes aegis-border-rotate {
+  to { --aegis-angle: 360deg; }
+}
+@property --aegis-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* Animated holographic border — drop on top of any aegis-card via class .aegis-card-holo */
+.aegis-card-holo {
+  position: relative;
+}
+.aegis-card-holo::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--aegis-angle, 0deg),
+    rgba(99,102,241,0.0)   0deg,
+    rgba(99,102,241,0.55) 60deg,
+    rgba(168,85,247,0.55) 140deg,
+    rgba(56,189,248,0.55) 220deg,
+    rgba(99,102,241,0.0) 300deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  animation: aegis-border-rotate 8s linear infinite;
+  opacity: 0.7;
+}
+
+/* 3D tilt on hover — apply via .aegis-tilt */
+.aegis-tilt {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: perspective(1200px) rotateX(0deg) rotateY(0deg) translateZ(0);
+  will-change: transform;
+}
+.aegis-tilt:hover {
+  transform: perspective(1200px) rotateX(2deg) rotateY(-2deg) translateZ(8px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.06),
+    0 0 0 1px rgba(99,102,241,0.25),
+    0 12px 32px -6px rgba(99,102,241,0.18),
+    0 30px 60px -16px rgba(0,0,0,0.85);
+}
+
+/* Glassy lift — simpler hover (no rotation), works on dense layouts */
+.aegis-lift {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s;
+}
+.aegis-lift:hover {
+  transform: translateY(-2px);
+  border-color: rgba(99,102,241,0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    0 0 0 1px rgba(99,102,241,0.18),
+    0 14px 36px -10px rgba(99,102,241,0.22),
+    0 24px 48px -12px rgba(0,0,0,0.8);
+}
+
+/* Neon corner brackets — drop on a positioned container via .aegis-corners */
+.aegis-corners::before,
+.aegis-corners::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border-color: rgba(99,102,241,0.55);
+  border-style: solid;
+}
+.aegis-corners::before {
+  top: -1px; left: -1px;
+  border-width: 1px 0 0 1px;
+  border-top-left-radius: 6px;
+}
+.aegis-corners::after {
+  bottom: -1px; right: -1px;
+  border-width: 0 1px 1px 0;
+  border-bottom-right-radius: 6px;
+}
+
+/* Scanline overlay — subtle horizontal lines (CRT/sci-fi) */
+.aegis-scanlines {
+  position: relative;
+}
+.aegis-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.0) 0px,
+    rgba(255,255,255,0.0) 2px,
+    rgba(255,255,255,0.02) 3px,
+    rgba(255,255,255,0.0) 4px
+  );
+  border-radius: inherit;
+  mix-blend-mode: overlay;
+}
+
+/* Iridescent text — multi-stop gradient, animated for life */
+@keyframes aegis-iridescent {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.aegis-iridescent {
+  background: linear-gradient(90deg, #6366f1, #a855f7, #38bdf8, #6366f1);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: aegis-iridescent 6s linear infinite;
+}
+
+/* Soft floating orbs you can drop behind hero sections */
+.aegis-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.35;
+  pointer-events: none;
+  animation: aegis-float-gradient 18s ease-in-out infinite;
+}
+.aegis-orb--indigo { background: radial-gradient(circle, #6366f1, transparent 70%); }
+.aegis-orb--violet { background: radial-gradient(circle, #a855f7, transparent 70%); }
+.aegis-orb--cyan   { background: radial-gradient(circle, #06b6d4, transparent 70%); }
+.aegis-orb--rose   { background: radial-gradient(circle, #f43f5e, transparent 70%); }
+.aegis-orb--amber  { background: radial-gradient(circle, #f59e0b, transparent 70%); }
+.aegis-orb--emerald{ background: radial-gradient(circle, #10b981, transparent 70%); }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
 .aegis-btn-primary {
