@@ -2,7 +2,6 @@
 
 <img src="Panel/public/logo-plat-nb.png" alt="Aegis" width="220" />
 
-# **AEGIS**
 ### *Plateforme OSINT modulaire — multi-API, multi-utilisateur, temps réel*
 
 [![Stack](https://img.shields.io/badge/stack-React%20%C2%B7%20Vite%20%C2%B7%20Express%20%C2%B7%20SQLite-6366f1?style=for-the-badge)]()
