@@ -571,6 +571,44 @@ function gmapsUrl(...parts: (string | undefined | null)[]): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
+/** Concatène les fragments d'adresse en string utilisable. */
+function joinAddress(...parts: (string | undefined | null)[]): string {
+  return parts.filter(Boolean).join(', ').trim();
+}
+
+/**
+ * Mini-carte d'adresse — embed Google Maps sans clé API (URL `?output=embed`).
+ * Fonctionne avec n'importe quelle adresse texte ; Google se charge du géocodage.
+ * Fallback : si l'iframe est bloquée (X-Frame-Options), on affiche un placeholder
+ * cliquable.
+ */
+function OsintMap({ address, height = 220, label }: { address: string; height?: number; label?: string }) {
+  if (!address.trim()) return null;
+  const url     = `https://maps.google.com/maps?q=${encodeURIComponent(address)}&z=15&output=embed`;
+  const fullUrl = gmapsUrl(address);
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
+      <div className="px-3 py-2 flex items-center gap-2 border-b border-white/5">
+        <MapPin className="w-3.5 h-3.5 text-rose-300 flex-shrink-0" />
+        <span className="text-[11px] text-foreground font-mono truncate flex-1">{label || address}</span>
+        <a href={fullUrl} target="_blank" rel="noopener noreferrer"
+          className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-semibold text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/20 ring-1 ring-indigo-500/30 inline-flex items-center gap-1 flex-shrink-0">
+          Maps <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+      <iframe
+        src={url}
+        width="100%"
+        height={height}
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+        style={{ border: 0, display: 'block' }}
+        title={`Carte ${address}`}
+      />
+    </div>
+  );
+}
+
 // ── Multi-criteria identity form (BrixHub schema) ──────────────────────────
 interface IdentityForm {
   // Identité
@@ -1404,6 +1442,25 @@ function OsintReportView({ report }: { report: OsintReport }) {
         </div>
       </div>
 
+      {/* ── Carte d'ensemble (1ère adresse trouvée) ──────────────── */}
+      {(() => {
+        const addressed = report.identities.find(p => p.adresse || p.ville);
+        if (!addressed) return null;
+        const addr = joinAddress(addressed.adresse, addressed.code_postal, addressed.ville);
+        if (!addr) return null;
+        const fullName = [addressed.prenom, addressed.nom_famille].filter(Boolean).join(' ').trim() || addr;
+        return (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MapPin className="w-4 h-4 text-rose-300" />
+              <h3 className="text-sm font-semibold tracking-tight">Localisation</h3>
+              <span className="text-[10px] text-muted-foreground">({fullName})</span>
+            </div>
+            <OsintMap address={addr} label={fullName} height={260} />
+          </div>
+        );
+      })()}
+
       {/* ── Identités ─────────────────────────────────────────────── */}
       {report.identities.length > 0 && (
         <div>
@@ -1552,8 +1609,10 @@ function Tag({ ok, bad, label }: { ok?: boolean; bad?: boolean; label: string })
 
 function AggregatedPersonCard({ person: p }: { person: AggregatedPerson }) {
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'merged' | 'brixhub' | 'seeknow'>('merged');
   const fullName = [p.prenom, p.nom_famille].filter(Boolean).join(' ').trim() || p.email || 'Profil';
   const initials = (fullName || '?').slice(0, 1).toUpperCase();
+  const address  = joinAddress(p.adresse, p.code_postal, p.ville);
 
   const Field = ({ label, value, mono = false }: { label: string; value?: string | string[]; mono?: boolean }) => {
     if (!value || (Array.isArray(value) && !value.length)) return null;
@@ -1565,6 +1624,9 @@ function AggregatedPersonCard({ person: p }: { person: AggregatedPerson }) {
       </div>
     );
   };
+
+  const brixRaw = p.raw.filter(r => r.provider === 'brixhub');
+  const seekRaw = p.raw.filter(r => r.provider === 'seeknow');
 
   return (
     <div className="rounded-lg border border-white/5 bg-white/[0.02] overflow-hidden">
@@ -1590,34 +1652,87 @@ function AggregatedPersonCard({ person: p }: { person: AggregatedPerson }) {
         </div>
         <ChevronRight className={`w-4 h-4 text-muted-foreground/50 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>
+
       {open && (
-        <div className="px-3 pb-3 pt-1 border-t border-white/5 space-y-1">
-          <Field label="Prénom"      value={p.prenom} />
-          <Field label="Nom"         value={p.nom_famille} />
-          <Field label="Naissance"   value={p.date_naissance} mono />
-          <Field label="Genre"       value={p.genre} />
-          <Field label="Email"       value={p.email} mono />
-          <Field label="Emails"      value={p.emails && p.emails.length > 1 ? p.emails : undefined} mono />
-          <Field label="Téléphone"   value={p.telephone} mono />
-          <Field label="Téléphones"  value={p.phones && p.phones.length > 1 ? p.phones : undefined} mono />
-          {(p.adresse || p.ville) && (
-            <div className="flex items-baseline gap-2 text-xs">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold w-24 flex-shrink-0">Adresse</span>
-              <a href={gmapsUrl(p.adresse, p.code_postal, p.ville)}
-                target="_blank" rel="noopener noreferrer"
-                className="text-indigo-300 hover:text-indigo-200 break-all inline-flex items-center gap-1">
-                <span>{[p.adresse, p.code_postal, p.ville].filter(Boolean).join(', ')}</span>
-                <MapPin className="w-3 h-3 opacity-60 flex-shrink-0" />
-              </a>
+        <div className="border-t border-white/5">
+          {/* Tabs : merged / brixhub / seeknow */}
+          <div className="flex items-center gap-1 px-3 pt-2 pb-1 border-b border-white/5">
+            {[
+              { k: 'merged' as const,  label: 'Fusion',   tone: 'bg-violet-500/15 text-violet-300 ring-violet-500/30',   count: undefined },
+              { k: 'brixhub' as const, label: 'BrixHub',  tone: 'bg-indigo-500/15 text-indigo-300 ring-indigo-500/30',   count: brixRaw.length },
+              { k: 'seeknow' as const, label: 'SeekNow',  tone: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30', count: seekRaw.length },
+            ].map(t => {
+              const active = activeTab === t.k;
+              const disabled = (t.k === 'brixhub' && brixRaw.length === 0) || (t.k === 'seeknow' && seekRaw.length === 0);
+              return (
+                <button key={t.k}
+                  disabled={disabled}
+                  onClick={() => setActiveTab(t.k)}
+                  className={`text-[11px] uppercase tracking-wider font-semibold px-2 py-1 rounded transition-all disabled:opacity-30 ${
+                    active ? `${t.tone} ring-1` : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                  }`}>
+                  {t.label}{t.count != null && <span className="ml-1 opacity-70">({t.count})</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeTab === 'merged' && (
+            <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Field label="Prénom"      value={p.prenom} />
+                <Field label="Nom"         value={p.nom_famille} />
+                <Field label="Naissance"   value={p.date_naissance} mono />
+                <Field label="Genre"       value={p.genre} />
+                <Field label="Email"       value={p.email} mono />
+                <Field label="Emails"      value={p.emails && p.emails.length > 1 ? p.emails : undefined} mono />
+                <Field label="Téléphone"   value={p.telephone} mono />
+                <Field label="Téléphones"  value={p.phones && p.phones.length > 1 ? p.phones : undefined} mono />
+                {(p.adresse || p.ville) && (
+                  <div className="flex items-baseline gap-2 text-xs">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold w-24 flex-shrink-0">Adresse</span>
+                    <a href={gmapsUrl(address)} target="_blank" rel="noopener noreferrer"
+                      className="text-indigo-300 hover:text-indigo-200 break-all inline-flex items-center gap-1">
+                      <span>{address}</span>
+                      <MapPin className="w-3 h-3 opacity-60 flex-shrink-0" />
+                    </a>
+                  </div>
+                )}
+                <Field label="IBAN"        value={p.iban} mono />
+                <Field label="NIR"         value={p.nir} mono />
+                <Field label="SIRET"       value={p.siret} mono />
+                <Field label="Société"     value={p.societe} />
+                <div className="text-[10px] text-muted-foreground/60 mt-2">
+                  {p.raw.length} source{p.raw.length > 1 ? 's' : ''} · {brixRaw.length} BrixHub · {seekRaw.length} SeekNow · ID {p.id.slice(0, 16)}…
+                </div>
+              </div>
+              {address && (
+                <div>
+                  <OsintMap address={address} label={fullName} height={200} />
+                </div>
+              )}
             </div>
           )}
-          <Field label="IBAN"        value={p.iban} mono />
-          <Field label="NIR"         value={p.nir} mono />
-          <Field label="SIRET"       value={p.siret} mono />
-          <Field label="Société"     value={p.societe} />
-          <div className="text-[10px] text-muted-foreground/60 mt-2">
-            {p.raw.length} source{p.raw.length > 1 ? 's' : ''} · ID interne {p.id.slice(0, 24)}…
-          </div>
+
+          {activeTab === 'brixhub' && (
+            <div className="p-3 space-y-2">
+              {brixRaw.length === 0 ? (
+                <div className="text-[11px] text-muted-foreground italic">Aucune source BrixHub.</div>
+              ) : (
+                brixRaw.map((r, i) => <BrixProfileCard key={i} profile={r.profile} compact />)
+              )}
+            </div>
+          )}
+
+          {activeTab === 'seeknow' && (
+            <div className="p-3 space-y-2">
+              {seekRaw.length === 0 ? (
+                <div className="text-[11px] text-muted-foreground italic">Aucune source SeekNow.</div>
+              ) : (
+                seekRaw.map((r, i) => <SeeknowProfileCard key={i} profile={r.profile} />)
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

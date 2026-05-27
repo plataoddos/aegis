@@ -283,9 +283,17 @@ export async function runOsintIdentity(
     plan.push({ provider: 'brixhub', endpoint: '/search', method: 'POST', cost: 1, body: brixSearch, logKey: 'search' });
   }
 
+  // SeekNow ne supporte qu'une seule `query` par appel /search (pas de
+  // recherche structurée), mais on déclenche systématiquement un /search
+  // pour chaque identifiant utilisable + un /search fallback "nom prénom"
+  // quand on n'a que les champs identité. Sans ça les critères purement
+  // civils (nom+prénom+ville) ne déclenchaient aucun appel SeekNow.
   const email = trim(form.email);
   const phone = trim(form.telephone) || trim(form.mobile);
   const user  = trim(form.nom_utilisateur);
+  const iban  = trim(form.iban);
+  const nameQuery = [trim(form.prenom), trim(form.nom_famille)].filter(Boolean).join(' ').trim();
+
   if (email) {
     plan.push({ provider: 'seeknow', endpoint: '/search',              method: 'POST', cost: 1, body: { query: email, type: 'email', limit: 100 }, logKey: 'search' });
     plan.push({ provider: 'seeknow', endpoint: '/network/email-check', method: 'GET',  cost: 1, query: { email },                                  logKey: 'network_email' });
@@ -297,6 +305,15 @@ export async function runOsintIdentity(
   if (user) {
     plan.push({ provider: 'seeknow', endpoint: '/username/social', method: 'GET', cost: 1, query: { username: user }, logKey: 'username_social' });
     plan.push({ provider: 'seeknow', endpoint: '/search',          method: 'POST', cost: 1, body: { query: user, type: 'username', limit: 100 }, logKey: 'search' });
+  }
+  if (iban) {
+    plan.push({ provider: 'seeknow', endpoint: '/search', method: 'POST', cost: 1, body: { query: iban, limit: 100 }, logKey: 'search' });
+  }
+  // Fallback : si on n'a aucun identifiant atomique mais qu'on a un
+  // nom/prénom, on tente quand même un /search texte libre (SeekNow auto-
+  // détecte le type quand on l'omet).
+  if (!email && !phone && !user && nameQuery) {
+    plan.push({ provider: 'seeknow', endpoint: '/search', method: 'POST', cost: 1, body: { query: nameQuery, limit: 100 }, logKey: 'search' });
   }
 
   // ── Exécution parallèle ────────────────────────────────────────────────
