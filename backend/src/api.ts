@@ -10,6 +10,7 @@ import {
   callSeeknow, callSeeknowDryRun, SEEKNOW_CATALOG,
   getSeeknowCredits, getSeeknowDailyLimit, type SeeknowKey,
 } from './seeknow.js';
+import { runOsintIdentity, type IdentityForm } from './osint.js';
 import { notifyPersonCreated } from './discordWebhook.js';
 import { requireUser, isPremium, quotaForUser } from './auth.js';
 
@@ -542,6 +543,23 @@ export function buildApi() {
         tier: isPremium(me) ? 'premium' : 'free',
       },
     });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Aegis OSINT aggregator — fan-out BrixHub + SeekNow, normalisation,
+  //  corrélation par entité (email/phone/nom). Le panel consomme cette
+  //  enveloppe au lieu d'orchestrer lui-même les deux providers.
+  // ─────────────────────────────────────────────────────────────────────────
+  r.post('/osint/identity', async (req, res) => {
+    const me = users.byId(req.user!.id)!;
+    const form: IdentityForm = (req.body && typeof req.body === 'object') ? req.body : {};
+    const fresh = req.body?.fresh === true;
+    try {
+      const report = await runOsintIdentity(me, form, fresh);
+      res.json(report);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'osint error' });
+    }
   });
 
   // ── IP Lookup (proxied, fallback chain) ──────────────────────────────────
