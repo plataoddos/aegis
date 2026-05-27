@@ -422,11 +422,15 @@ export async function runOsintIdentity(
       if (!list.length && data && typeof data === 'object') {
         console.warn('[osint] seeknow /search: 0 results, payload keys =', Object.keys(data).slice(0, 10));
       }
+      // Note importante : SeekNow `/search` ne filtre que sur le texte (pas
+      // de date de naissance, pas de ville). Pour ne pas polluer la section
+      // "Identités corrélées" avec des homonymes, on ne crée PAS d'identité
+      // par défaut. La promotion en identité a lieu plus bas dans la phase
+      // post-link, ssi le record matche un identifiant fort du formulaire
+      // (email/phone exact) ou un identifiant fort d'une identité BrixHub
+      // déjà retenue (qui, elle, a été filtrée par date/ville côté upstream).
       for (const r of list) {
-        const b = seeknowSearchToBreach(r);
-        breaches.push(b);
-        const hint = breachToPersonHint(b);
-        if (hint) upsertPerson(hint);
+        breaches.push(seeknowSearchToBreach(r));
       }
       continue;
     }
@@ -479,13 +483,35 @@ export async function runOsintIdentity(
     }
   }
 
-  // ── Post-link : on rattache chaque breach SeekNow à toute personne ─────
-  // partageant un identifiant fort (email, téléphone, nom complet). Sans
-  // ce passage, les breach records dont la signature primaire ne matche
-  // pas exactement celle de la personne BrixHub restent orphelins dans
-  // `breaches[]` et la sous-tab SeekNow d'une identité reste vide alors
-  // que l'utilisateur a clairement des résultats.
+  // ── Promotion stricte des breaches SeekNow en "identités" ───────────────
+  // SeekNow `/search` matche sur le texte sans connaître date_naissance/ville.
+  // On ne promeut un breach en identité corrélée que s'il matche un IDENTIFIANT
+  // FORT renseigné explicitement dans le formulaire :
+  //   - email exact (form.email vs breach.email)
+  //   - phone exact (form.telephone / form.mobile vs breach.username|extra.*)
+  // Pour un match purement textuel (nom+prénom seulement), on garde le
+  // record dans `breaches[]` mais on ne crée PAS de fausse identité.
   const norm = (s?: string) => (s || '').toLowerCase().replace(/\s+/g, '');
+  const formEmails = new Set(
+    [form.email].filter(Boolean).map(e => norm(e!))
+  );
+  const formPhones = new Set(
+    [form.telephone, form.mobile]
+      .filter(Boolean)
+      .map(p => String(p).replace(/[^\d+]/g, ''))   // normalisation E.164
+      .filter(p => p.length >= 6)
+  );
+  for (const b of breaches) {
+    const matchesFormEmail = b.email && formEmails.has(norm(b.email));
+    const breachPhone = (b.extra?.phone || b.extra?.telephone || b.username || '').toString();
+    const breachPhoneNorm = breachPhone.replace(/[^\d+]/g, '');
+    const matchesFormPhone = !!(breachPhoneNorm && formPhones.has(breachPhoneNorm));
+    if (matchesFormEmail || matchesFormPhone) {
+      const hint = breachToPersonHint(b);
+      if (hint) upsertPerson(hint);
+    }
+  }
+
   const linkRaw = (person: AggregatedPerson, profile: any, kind: 'seeknow') => {
     if (!person.raw.some(r => r.provider === kind && r.profile === profile)) {
       person.raw.push({ provider: kind, profile });
