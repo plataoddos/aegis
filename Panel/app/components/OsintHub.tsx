@@ -745,11 +745,12 @@ function buildMultiQueries(f: IdentityForm): MultiQuery[] {
   if (Object.keys(search).length) {
     search.flexible = f.flexible ?? true;
     search.per_page = 100;
-    const summary = [
-      [f.prenom, f.nom_famille].filter(Boolean).join(' '),
-      f.email, f.telephone || f.mobile,
-      f.iban, f.siret, f.nir,
-    ].filter(Boolean).join(' · ') || 'recherche multi-critères';
+    // Récap exhaustif des champs envoyés à BrixHub : tous ceux non vides,
+    // sous forme `clé:valeur` pour montrer ce qui partira réellement.
+    const summary = Object.entries(search)
+      .filter(([k]) => k !== 'flexible' && k !== 'per_page')
+      .map(([k, v]) => `${k}:${v}`)
+      .join(' · ') || 'recherche multi-critères';
     queries.push({ provider: 'brixhub', key: 'search', label: `BrixHub /search (${summary})`, payload: search });
   }
 
