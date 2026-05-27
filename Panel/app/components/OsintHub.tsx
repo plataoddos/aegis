@@ -1574,18 +1574,12 @@ function OsintReportView({ report }: { report: OsintReport }) {
           <Stat icon={<Server      className="w-3.5 h-3.5" />}  label="BrixHub"    value={report.providers.brixhub.calls} />
           <Stat icon={<Database    className="w-3.5 h-3.5" />}  label="SeekNow"    value={report.providers.seeknow.calls} />
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground pt-3 border-t border-white/5">
-          <span className="inline-flex items-center gap-1.5">
-            <Zap className="w-3 h-3 text-amber-300" />
-            Quota Aegis : <strong className="text-foreground tabular-nums">{report.user_quota.used}/{report.user_quota.limit}</strong>
-            <span className="text-muted-foreground/60">({report.user_quota.tier})</span>
-          </span>
-          {report.providers.brixhub.credits_remaining != null && (
-            <span>BrixHub : <strong className="text-foreground tabular-nums">{report.providers.brixhub.credits_remaining}</strong> crédits</span>
-          )}
-          {report.providers.seeknow.credits_remaining != null && (
-            <span>SeekNow : <strong className="text-foreground tabular-nums">{report.providers.seeknow.credits_remaining}</strong> crédits</span>
-          )}
+        {/* Quota Aegis uniquement — les crédits upstream BrixHub/SeekNow ne
+            concernent pas l'utilisateur final, on ne les expose plus. */}
+        <div className="mt-4 flex items-center gap-1.5 text-[11px] text-muted-foreground pt-3 border-t border-white/5">
+          <Zap className="w-3 h-3 text-amber-300" />
+          Quota Aegis : <strong className="text-foreground tabular-nums">{report.user_quota.used}/{report.user_quota.limit}</strong>
+          <span className="text-muted-foreground/60">({report.user_quota.tier})</span>
         </div>
       </div>
 
