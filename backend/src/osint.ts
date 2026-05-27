@@ -450,6 +450,47 @@ export async function runOsintIdentity(
     }
   }
 
+  // ── Post-link : on rattache chaque breach SeekNow à toute personne ─────
+  // partageant un identifiant fort (email, téléphone, nom complet). Sans
+  // ce passage, les breach records dont la signature primaire ne matche
+  // pas exactement celle de la personne BrixHub restent orphelins dans
+  // `breaches[]` et la sous-tab SeekNow d'une identité reste vide alors
+  // que l'utilisateur a clairement des résultats.
+  const norm = (s?: string) => (s || '').toLowerCase().replace(/\s+/g, '');
+  const linkRaw = (person: AggregatedPerson, profile: any, kind: 'seeknow') => {
+    if (!person.raw.some(r => r.provider === kind && r.profile === profile)) {
+      person.raw.push({ provider: kind, profile });
+      if (!person.providers.includes(kind)) person.providers.push(kind);
+    }
+  };
+  for (const person of personMap.values()) {
+    const personEmails = new Set(
+      [person.email, ...(person.emails || [])].filter(Boolean).map(e => norm(e!))
+    );
+    const fullName = [person.prenom, person.nom_famille].filter(Boolean).map(norm).join('');
+
+    for (const b of breaches) {
+      let match = false;
+      if (b.email && personEmails.has(norm(b.email))) match = true;
+      // SeekNow stocke parfois des téléphones dans extra.* — best effort.
+      if (b.username && person.email && norm(b.username) === norm(person.email.split('@')[0])) match = true;
+      if (b.name && fullName) {
+        const bn = norm(b.name);
+        if (bn === fullName || (bn.includes(norm(person.prenom || '')) && bn.includes(norm(person.nom_famille || '')))) match = true;
+      }
+      if (match) linkRaw(person, b, 'seeknow');
+    }
+
+    // Rattacher aussi les hits sociaux qui correspondent à un email/username
+    for (const s of social) {
+      if (!s.profile) continue;
+      const handle = norm(s.profile.username || s.profile.handle || '');
+      if (handle && person.email && handle === norm(person.email.split('@')[0])) {
+        linkRaw(person, s, 'seeknow');
+      }
+    }
+  }
+
   return {
     query:     form,
     identities: Array.from(personMap.values()).sort((a, b) => b.confidence - a.confidence),

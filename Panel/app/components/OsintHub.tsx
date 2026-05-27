@@ -56,13 +56,16 @@ async function apiPost<T>(path: string, body: any): Promise<T> {
 }
 
 // ── Auto-detection ─────────────────────────────────────────────────────────
-type Kind = 'ip' | 'domain' | 'email' | 'phone' | 'hash' | 'discord' | 'username';
+type Kind = 'ip' | 'domain' | 'email' | 'phone' | 'hash' | 'discord' | 'username' | 'name';
 
 interface Detection { kind: Kind; value: string; confidence: number; label: string; icon: any }
 
 function detect(raw: string): Detection[] {
   const q = raw.trim();
   if (!q) return [];
+  // Strip leading "@" pour les handles type @user — on la rajoutera côté
+  // affichage seulement.
+  const stripped = q.replace(/^@+/, '');
   const out: Detection[] = [];
 
   if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(q)) {
@@ -84,9 +87,27 @@ function detect(raw: string): Detection[] {
   if (/^[a-f0-9]{40}$/i.test(q))   out.push({ kind: 'hash', value: q.toLowerCase(), confidence: 1, label: 'SHA1', icon: Hash });
   if (/^[a-f0-9]{64}$/i.test(q))   out.push({ kind: 'hash', value: q.toLowerCase(), confidence: 1, label: 'SHA256', icon: Hash });
   if (/^\d{15,25}$/.test(q))       out.push({ kind: 'discord', value: q, confidence: 0.85, label: 'Discord Snowflake', icon: MessageSquare });
-  if (/^[a-zA-Z0-9_]{3,32}$/.test(q) && !/^\d+$/.test(q)) {
-    out.push({ kind: 'username', value: q, confidence: 0.4, label: 'Username (réseaux sociaux)', icon: AtSign });
+
+  // Username — accepte aussi `.` (TikTok, Instagram) et `-` ; strip le `@`
+  // initial. Confidence haute si l'input commence par `@`.
+  if (/^[a-zA-Z0-9_.-]{3,32}$/.test(stripped) && !/^\d+$/.test(stripped) && !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(stripped)) {
+    const conf = q.startsWith('@') ? 0.85 : 0.5;
+    out.push({ kind: 'username', value: stripped, confidence: conf, label: q.startsWith('@') ? 'Username (@handle)' : 'Username (réseaux sociaux)', icon: AtSign });
   }
+
+  // Nom + prénom (ou identité libre). Détection : 2+ mots de lettres
+  // (majuscules/minuscules, accents, traits d'union), 3-80 caractères au
+  // total, pas un domaine/email/etc.
+  if (
+    out.every(d => d.kind !== 'email' && d.kind !== 'domain') &&
+    /^[\p{L}][\p{L}\s'.-]{2,79}$/u.test(q) &&
+    /\s/.test(q) &&
+    q.split(/\s+/).filter(Boolean).length >= 2 &&
+    q.split(/\s+/).filter(Boolean).length <= 4
+  ) {
+    out.push({ kind: 'name', value: q, confidence: 0.7, label: 'Nom & prénom', icon: User });
+  }
+
   out.sort((a, b) => b.confidence - a.confidence);
   return out;
 }
@@ -817,6 +838,37 @@ export function OsintHub() {
   const runScan = async (det: Detection) => {
     setTarget(det);
     setRunning(true);
+    setFindings([]);
+    setOsintReport(null);
+
+    // ── Cas "Nom & prénom" ──────────────────────────────────────────────
+    // On délègue à l'agrégateur backend qui sait construire le bon plan
+    // d'appels (BrixHub /search structuré + SeekNow /search texte libre).
+    // Le rendu utilise la même vue unifiée que le mode multi-critères.
+    if (det.kind === 'name') {
+      const parts = det.value.trim().split(/\s+/);
+      // Heuristique simple : 1er token = prénom, le reste = nom de famille.
+      // (BrixHub reste tolérant grâce à `flexible: true` côté serveur.)
+      const prenom      = parts[0];
+      const nom_famille = parts.slice(1).join(' ');
+      try {
+        const report = await apiPost<OsintReport>('/api/osint/identity', { prenom, nom_famille, flexible: true });
+        setOsintReport(report);
+        if (report.providers?.brixhub?.credits_remaining != null) {
+          setCredits(report.providers.brixhub.credits_remaining);
+        }
+        const idn = report.identities.length;
+        const brc = report.breaches.length;
+        toast.success(`Recherche identité · ${idn} identité${idn > 1 ? 's' : ''} · ${brc} brèche${brc > 1 ? 's' : ''}`);
+      } catch (e: any) {
+        toast.error('Recherche échouée', { description: e.message });
+      } finally {
+        setRunning(false);
+      }
+      return;
+    }
+
+    // ── Autres kinds : runners parallèles classiques ────────────────────
     const sources = SOURCES.filter(s => s.appliesTo.includes(det.kind));
     setFindings(sources.map(s => ({
       id: s.id, source: s.id, category: 'network',
@@ -1442,25 +1494,6 @@ function OsintReportView({ report }: { report: OsintReport }) {
         </div>
       </div>
 
-      {/* ── Carte d'ensemble (1ère adresse trouvée) ──────────────── */}
-      {(() => {
-        const addressed = report.identities.find(p => p.adresse || p.ville);
-        if (!addressed) return null;
-        const addr = joinAddress(addressed.adresse, addressed.code_postal, addressed.ville);
-        if (!addr) return null;
-        const fullName = [addressed.prenom, addressed.nom_famille].filter(Boolean).join(' ').trim() || addr;
-        return (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <MapPin className="w-4 h-4 text-rose-300" />
-              <h3 className="text-sm font-semibold tracking-tight">Localisation</h3>
-              <span className="text-[10px] text-muted-foreground">({fullName})</span>
-            </div>
-            <OsintMap address={addr} label={fullName} height={260} />
-          </div>
-        );
-      })()}
-
       {/* ── Identités ─────────────────────────────────────────────── */}
       {report.identities.length > 0 && (
         <div>
@@ -1677,42 +1710,40 @@ function AggregatedPersonCard({ person: p }: { person: AggregatedPerson }) {
             })}
           </div>
 
-          {activeTab === 'merged' && (
-            <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <Field label="Prénom"      value={p.prenom} />
-                <Field label="Nom"         value={p.nom_famille} />
-                <Field label="Naissance"   value={p.date_naissance} mono />
-                <Field label="Genre"       value={p.genre} />
-                <Field label="Email"       value={p.email} mono />
-                <Field label="Emails"      value={p.emails && p.emails.length > 1 ? p.emails : undefined} mono />
-                <Field label="Téléphone"   value={p.telephone} mono />
-                <Field label="Téléphones"  value={p.phones && p.phones.length > 1 ? p.phones : undefined} mono />
-                {(p.adresse || p.ville) && (
-                  <div className="flex items-baseline gap-2 text-xs">
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold w-24 flex-shrink-0">Adresse</span>
-                    <a href={gmapsUrl(address)} target="_blank" rel="noopener noreferrer"
-                      className="text-indigo-300 hover:text-indigo-200 break-all inline-flex items-center gap-1">
-                      <span>{address}</span>
-                      <MapPin className="w-3 h-3 opacity-60 flex-shrink-0" />
-                    </a>
-                  </div>
-                )}
-                <Field label="IBAN"        value={p.iban} mono />
-                <Field label="NIR"         value={p.nir} mono />
-                <Field label="SIRET"       value={p.siret} mono />
-                <Field label="Société"     value={p.societe} />
-                <div className="text-[10px] text-muted-foreground/60 mt-2">
+          {activeTab === 'merged' && (() => {
+            // On synthétise un "profile BrixHub-like" à partir des champs
+            // mergés pour que la fusion réutilise exactement le même look
+            // que BrixProfileCard (groupes, copy, badge Maps…).
+            const synthProfile: any = {
+              prenom:         p.prenom,
+              nom_famille:    p.nom_famille,
+              date_naissance: p.date_naissance,
+              genre:          p.genre,
+              email:          p.email,
+              telephone:      p.telephone,
+              adresse:        p.adresse,
+              ville:          p.ville,
+              code_postal:    p.code_postal,
+              iban:           p.iban,
+              nir:            p.nir,
+              siret:          p.siret,
+              societe:        p.societe,
+              _confidence:    p.confidence,
+              _emails:        p.emails && p.emails.length > 1 ? p.emails.join(', ') : undefined,
+              _phones:        p.phones && p.phones.length > 1 ? p.phones.join(', ') : undefined,
+            };
+            // On nettoie les undefined.
+            for (const k of Object.keys(synthProfile)) if (synthProfile[k] == null) delete synthProfile[k];
+            return (
+              <div className="p-3 space-y-3">
+                {address && <OsintMap address={address} label={fullName} height={260} />}
+                <BrixProfileCard profile={synthProfile} compact />
+                <div className="text-[10px] text-muted-foreground/60">
                   {p.raw.length} source{p.raw.length > 1 ? 's' : ''} · {brixRaw.length} BrixHub · {seekRaw.length} SeekNow · ID {p.id.slice(0, 16)}…
                 </div>
               </div>
-              {address && (
-                <div>
-                  <OsintMap address={address} label={fullName} height={200} />
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {activeTab === 'brixhub' && (
             <div className="p-3 space-y-2">
@@ -1806,8 +1837,16 @@ function SeeknowProfileCard({ profile: p }: { profile: any }) {
   // on le hisse au top-level. M\u00eame chose pour `roblox`.
   const flat: Record<string, any> = (() => {
     if (!p || typeof p !== 'object') return { value: String(p) };
-    if (p.profile && typeof p.profile === 'object') return { ...p, ...p.profile };
-    return p;
+    let f: Record<string, any>;
+    if (p.profile && typeof p.profile === 'object') f = { ...p, ...p.profile };
+    else f = { ...p };
+    // Hisser le contenu d'`extra` au top-level (cas BreachRecord SeekNow :
+    // les champs métier sortent du blob JSON et redeviennent inspectables).
+    if (f.extra && typeof f.extra === 'object' && !Array.isArray(f.extra)) {
+      const { extra, ...rest } = f;
+      f = { ...rest, ...extra };
+    }
+    return f;
   })();
 
   // Champs prioritaires \u00e0 afficher en premier s'ils existent.
