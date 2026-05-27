@@ -15,7 +15,7 @@ import {
   Search, Loader2, Globe, MapPin, Mail, AtSign, Hash, Phone,
   MessageSquare, ShieldAlert, Server, Network, Database, Sparkles,
   Copy, Check, ChevronRight, ExternalLink, Zap, Target, FileSearch,
-  Radio, Lock, Unlock, Activity, User, Calendar, UserPlus,
+  Radio, Lock, Unlock, Activity, User, Calendar, UserPlus, KeyRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -1772,11 +1772,22 @@ function AggregatedPersonCard({ person: p }: { person: AggregatedPerson }) {
 
 function BreachRow({ b }: { b: BreachRecord }) {
   const [open, setOpen] = useState(false);
+  // SeekNow expose `_origin` ∈ {breach, stealer, external} dans `extra`
+  // pour distinguer une fuite classique d'un log infostealer (RedLine,
+  // Vidar...) ou d'une mention externe. On le rend visible d'un coup d'œil.
+  const origin = String(b.extra?._origin || '').toLowerCase();
+  const originStyle =
+    origin === 'stealer'  ? 'text-amber-300 bg-amber-500/15 ring-amber-500/30' :
+    origin === 'breach'   ? 'text-rose-300  bg-rose-500/15  ring-rose-500/30'  :
+    origin === 'external' ? 'text-sky-300   bg-sky-500/15   ring-sky-500/30'   :
+    '';
+  const Icon = origin === 'stealer' ? KeyRound : ShieldAlert;
   return (
     <div>
       <button onClick={() => setOpen(!open)} className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-white/[0.02]">
-        <ShieldAlert className="w-3.5 h-3.5 text-rose-300 flex-shrink-0" />
+        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${origin === 'stealer' ? 'text-amber-300' : 'text-rose-300'}`} />
         <span className="text-xs font-semibold text-foreground truncate">{b.source}</span>
+        {origin && <span className={`text-[9px] uppercase font-bold ring-1 px-1.5 py-0.5 rounded ${originStyle}`}>{origin}</span>}
         <span className="text-[11px] text-muted-foreground truncate flex-1">
           {[b.email, b.username, b.name].filter(Boolean).join(' · ') || '—'}
         </span>
