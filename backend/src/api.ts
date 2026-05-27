@@ -6,6 +6,10 @@ import {
   addToken, removeAccount, setEnabled, setLabel, startAccount, stopAccount, restartAll,
 } from './bots.js';
 import { callSeek, callSeekDryRun, SEEK_CATALOG, getKnownCredits, getDailyLimit, type SeekKey } from './seek.js';
+import {
+  callSeeknow, callSeeknowDryRun, SEEKNOW_CATALOG,
+  getSeeknowCredits, getSeeknowDailyLimit, type SeeknowKey,
+} from './seeknow.js';
 import { notifyPersonCreated } from './discordWebhook.js';
 import { requireUser, isPremium, quotaForUser } from './auth.js';
 
@@ -389,6 +393,149 @@ export function buildApi() {
       results,
       credits_remaining: getKnownCredits(),
       daily_limit:       getDailyLimit(),
+      user_quota: {
+        used,
+        limit,
+        tier: isPremium(me) ? 'premium' : 'free',
+      },
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  //  SeekNow proxy (https://see-know.eu/api/v1)
+  //  Provider parallèle à BrixHub. Mêmes garanties (cache, quota user,
+  //  audit, scrubbing) — seul l'upstream et le catalogue changent.
+  // ─────────────────────────────────────────────────────────────────────────
+  r.get('/seeknow/catalog', (_req, res) => {
+    res.json({
+      catalog:           SEEKNOW_CATALOG,
+      credits_remaining: getSeeknowCredits(),
+      daily_limit:       getSeeknowDailyLimit(),
+    });
+  });
+
+  const handleSeeknow = async (key: SeeknowKey, req: Request, res: Response) => {
+    const spec = SEEKNOW_CATALOG[key];
+    if (!spec) { res.status(404).json({ error: 'unknown endpoint' }); return; }
+    const fresh = req.query.fresh === '1' || req.body?.fresh === true;
+
+    const me    = users.byId(req.user!.id)!;
+    const limit = quotaForUser(me);
+    const used  = dailyUsage.today(me.id);
+    if (spec.cost > 0 && used >= limit) {
+      res.status(429).json({
+        error: `Quota journalier atteint (${used}/${limit} requêtes).`,
+        quota: { used, limit, tier: isPremium(me) ? 'premium' : 'free' },
+      });
+      return;
+    }
+
+    // Whitelist params (le catalogue déclare les clés acceptées) — évite
+    // qu'on relaie n'importe quoi à l'upstream.
+    const src: Record<string, any> = { ...(req.query || {}), ...(req.body || {}) };
+    const params: Record<string, any> = {};
+    for (const k of spec.paramKeys) {
+      if (src[k] != null && src[k] !== '') params[k] = src[k];
+    }
+
+    try {
+      const result = await callSeeknow(spec.path, {
+        method: spec.method,
+        cost:   spec.cost,
+        fresh,
+        body:   spec.method === 'POST' ? params : undefined,
+        query:  spec.method === 'GET'  ? params : undefined,
+      });
+      if (spec.cost > 0 && !result.cached) {
+        dailyUsage.bump(me.id);
+      }
+      apiUsage.log(me.id, 'seeknow', key, {
+        cost:   spec.cost,
+        cached: result.cached,
+        ok:     result.ok,
+        status: result.status,
+      });
+      res.status(result.ok ? 200 : 502).json({
+        ...result,
+        user_quota: {
+          used:  dailyUsage.today(me.id),
+          limit,
+          tier:  isPremium(me) ? 'premium' : 'free',
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'seeknow error' });
+    }
+  };
+
+  r.get('/seeknow/:key',  (req, res) => handleSeeknow(req.params.key as SeeknowKey, req, res));
+  r.post('/seeknow/:key', (req, res) => handleSeeknow(req.params.key as SeeknowKey, req, res));
+
+  // Preflight & multi pour SeekNow (même contrat que /seek-preflight et /seek-multi).
+  r.post('/seeknow-preflight', async (req, res) => {
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+    const out = tasks.map((t: any) => {
+      const spec = SEEKNOW_CATALOG[t?.key as SeeknowKey];
+      if (!spec) return { key: t?.key, valid: false, cached: false };
+      try {
+        const r = callSeeknowDryRun(spec.path, t?.params || {});
+        return { key: t.key, valid: true, cached: r.cached, fetched_at: r.fetched_at, cost: spec.cost };
+      } catch {
+        return { key: t.key, valid: false, cached: false };
+      }
+    });
+    res.json({ tasks: out });
+  });
+
+  r.post('/seeknow-multi', async (req, res) => {
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks : [];
+    const fresh = req.body?.fresh === true;
+    const me    = users.byId(req.user!.id)!;
+    const limit = quotaForUser(me);
+    let used    = dailyUsage.today(me.id);
+
+    const results = await Promise.all(tasks.map(async (t: any) => {
+      const spec = SEEKNOW_CATALOG[t?.key as SeeknowKey];
+      if (!spec) return { key: t?.key, ok: false, error: 'unknown endpoint' };
+      try {
+        const src: Record<string, any> = t.params || {};
+        const params: Record<string, any> = {};
+        for (const k of spec.paramKeys) {
+          if (src[k] != null && src[k] !== '') params[k] = src[k];
+        }
+        if (spec.cost > 0) {
+          const dry = callSeeknowDryRun(spec.path, params);
+          if (!dry.cached && used >= limit) {
+            return { key: t.key, ok: false, status: 429, error: `Quota journalier atteint (${used}/${limit})` };
+          }
+        }
+        const result = await callSeeknow(spec.path, {
+          method: spec.method,
+          cost:   spec.cost,
+          fresh,
+          body:   spec.method === 'POST' ? params : undefined,
+          query:  spec.method === 'GET'  ? params : undefined,
+        });
+        if (spec.cost > 0 && !result.cached) {
+          dailyUsage.bump(me.id);
+          used += 1;
+        }
+        apiUsage.log(me.id, 'seeknow', t.key, {
+          cost:   spec.cost,
+          cached: result.cached,
+          ok:     result.ok,
+          status: result.status,
+        });
+        return { key: t.key, params: t.params, ...result };
+      } catch (e: any) {
+        return { key: t.key, ok: false, error: e?.message || 'error' };
+      }
+    }));
+
+    res.json({
+      results,
+      credits_remaining: getSeeknowCredits(),
+      daily_limit:       getSeeknowDailyLimit(),
       user_quota: {
         used,
         limit,

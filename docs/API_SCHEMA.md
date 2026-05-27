@@ -274,7 +274,7 @@ DELETE /api/persons/:id                                                         
 
 `POST /persons` déclenche un webhook Discord (`discordWebhook.ts`) hors-ligne du chemin critique.
 
-#### OSINT proxy (BrixHub)
+#### OSINT proxy — BrixHub
 
 ```
 GET    /api/seek/catalog                                                         → {
@@ -289,6 +289,49 @@ POST   /api/seek-multi              { tasks:[{key,params}], fresh?:bool }       
        }
 GET    /api/ip-lookup/:ip           IPv4|IPv6                                    → { ok, data } | 502
 ```
+
+#### OSINT proxy — SeekNow
+
+```
+GET    /api/seeknow/catalog                                                      → {
+         catalog: SEEKNOW_CATALOG, credits_remaining, daily_limit
+       }
+GET    /api/seeknow/:key            query → params (whitelistés via paramKeys)   → SeeknowResult
+POST   /api/seeknow/:key            body  → params                               → SeeknowResult
+POST   /api/seeknow-preflight       { tasks:[{key,params}] }                     → { tasks:[{key,valid,cached,fetched_at,cost}] }
+POST   /api/seeknow-multi           { tasks:[{key,params}], fresh?:bool }        → {
+         results:SeeknowResult[], credits_remaining, daily_limit, user_quota
+       }
+```
+
+`SEEKNOW_CATALOG` (`seeknow.ts`) — coût 1 crédit sauf mention contraire :
+
+```
+search           POST /search                cost=1   { query, type?, limit? }
+stealer          POST /stealer               cost=2   { query, limit? }
+discord_user     GET  /discord/user          cost=1   { discord_id }
+discord_roblox   GET  /discord/to-roblox     cost=1   { discord_id }
+username_github  GET  /username/github       cost=1   { username }
+username_twitter GET  /username/twitter      cost=1   { username }
+username_tiktok  GET  /username/tiktok       cost=1   { username }
+username_reddit  GET  /username/reddit       cost=1   { username }
+username_social  GET  /username/social       cost=1   { username, platforms? }
+username_history GET  /username/history      cost=1   { username }
+network_ip       GET  /network/ip            cost=1   { ip }
+network_email    GET  /network/email-check   cost=1   { email }
+network_phone    GET  /network/phone         cost=1   { phone }
+domain_intel     GET  /domain/intel          cost=1   { domain }
+domain_whois     GET  /domain/whois          cost=1   { domain }
+gaming_xbox      GET  /gaming/xbox           cost=1   { gamertag }
+gaming_roblox    GET  /gaming/roblox         cost=1   { username | user_id }
+gaming_minecraft GET  /gaming/minecraft      cost=1   { username }
+credits          GET  /credits               cost=0   {}
+status           GET  /status                cost=0   {}
+```
+
+`SeeknowResult` (mêmes champs que `SeekResult`, mais `data` = enveloppe SeekNow `{ success, …, credits_remaining }` ou `{ error, message, errorCode? }`).
+
+Auth upstream : `X-API-Key: seek-…` (alternative `Authorization: Bearer seek-…`). Headers de quota lus : `X-RateLimit-Limit`, `X-RateLimit-Remaining` ; sinon fallback sur `data.credits_remaining`. Cache key préfixée `seeknow|<path>|<sortedParams>` pour ne pas collisionner avec BrixHub.
 
 `SEEK_CATALOG` (source de vérité, `seek.ts`) :
 
@@ -383,6 +426,10 @@ BRIX_API_KEY         X-API-Key BrixHub
 BRIX_BASE_URL        default https://brixhub.net/api/v1
 BRIX_CACHE_TTL_MS    default 86400000
 BRIX_USER_AGENT      default Aegis-Panel/1.0
+SEEKNOW_API_KEY      X-API-Key SeekNow (`seek-…`)
+SEEKNOW_BASE_URL     default https://see-know.eu/api/v1
+SEEKNOW_CACHE_TTL_MS default 86400000
+SEEKNOW_USER_AGENT   default Aegis-Panel/1.0
 SESSION_TTL_MS       default 7 j
 DISCORD_WEBHOOK_URL  notifications création fiche
 ```

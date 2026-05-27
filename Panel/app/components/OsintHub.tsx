@@ -476,15 +476,19 @@ interface IdentityForm {
   flexible?: boolean;
 }
 
-interface MultiQuery { key: string; label: string; payload: any }
+interface MultiQuery {
+  /** Provider → détermine la route backend (`/api/seek/*` vs `/api/seeknow/*`). */
+  provider: 'brixhub' | 'seeknow';
+  /** Catalog key (ex. 'search', 'lookup_email', 'network_email', 'discord_user'…). */
+  key: string;
+  label: string;
+  payload: any;
+}
 
 function buildMultiQueries(f: IdentityForm): MultiQuery[] {
-  // BrixHub /search fusionne déjà toutes les sources et renvoie une liste de
-  // profils avec score de confiance — un seul appel suffit pour tout couvrir,
-  // même quand l'utilisateur fournit email/téléphone/iban (ils sont passés
-  // comme critères du /search). Inutile de cramer des unités quota en faisant
-  // des reverse-lookups séparés : ils sont disponibles via le bouton
-  // "Approfondir le foyer" sur chaque carte de résultat.
+  const queries: MultiQuery[] = [];
+
+  // ── BrixHub /search : fusionne toutes les sources internes en un appel ──
   const search: Record<string, any> = {};
   for (const k of [
     'nom_famille', 'prenom', 'date_naissance', 'annee_naissance', 'genre',
@@ -497,16 +501,36 @@ function buildMultiQueries(f: IdentityForm): MultiQuery[] {
     const v = f[k];
     if (v != null && String(v).trim() !== '') search[k] = String(v).trim();
   }
-  if (!Object.keys(search).length) return [];
+  if (Object.keys(search).length) {
+    search.flexible = f.flexible ?? true;
+    search.per_page = 100;
+    const summary = [
+      [f.prenom, f.nom_famille].filter(Boolean).join(' '),
+      f.email, f.telephone || f.mobile,
+      f.iban, f.siret, f.nir,
+    ].filter(Boolean).join(' · ') || 'recherche multi-critères';
+    queries.push({ provider: 'brixhub', key: 'search', label: `BrixHub /search (${summary})`, payload: search });
+  }
 
-  search.flexible = f.flexible ?? true;
-  search.per_page = 100;
-  const summary = [
-    [f.prenom, f.nom_famille].filter(Boolean).join(' '),
-    f.email, f.telephone || f.mobile,
-    f.iban, f.siret, f.nir,
-  ].filter(Boolean).join(' · ') || 'recherche multi-critères';
-  return [{ key: 'search', label: `BrixHub /search (${summary})`, payload: search }];
+  // ── SeekNow : fan-out par identifiant atomique (212M+ breach records, ───
+  //    stealer logs, OSINT 70+ sources). Chaque appel = 1 crédit upstream.
+  const email = f.email?.trim();
+  const phone = (f.telephone || f.mobile)?.trim();
+  const user  = f.nom_utilisateur?.trim();
+  if (email) {
+    queries.push({ provider: 'seeknow', key: 'search',         label: `SeekNow /search (${email})`,        payload: { query: email, type: 'email', limit: 100 } });
+    queries.push({ provider: 'seeknow', key: 'network_email',  label: `SeekNow /network/email-check (${email})`, payload: { email } });
+  }
+  if (phone) {
+    queries.push({ provider: 'seeknow', key: 'search',         label: `SeekNow /search (${phone})`,        payload: { query: phone, type: 'phone', limit: 100 } });
+    queries.push({ provider: 'seeknow', key: 'network_phone',  label: `SeekNow /network/phone (${phone})`, payload: { phone } });
+  }
+  if (user) {
+    queries.push({ provider: 'seeknow', key: 'username_social', label: `SeekNow /username/social (${user})`, payload: { username: user } });
+    queries.push({ provider: 'seeknow', key: 'search',          label: `SeekNow /search (${user})`,         payload: { query: user, type: 'username', limit: 100 } });
+  }
+
+  return queries;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -554,30 +578,51 @@ export function OsintHub() {
     await Promise.all(multiQueries.map(async (q, i) => {
       const t0 = performance.now();
       try {
-        // The backend extracts path params from the body for lookup_*; we
-        // therefore POST every BrixHub call with a JSON body.
-        const res: any = await apiPost(`/api/seek/${q.key}`, q.payload);
+        // Routing par provider : BrixHub a une envelope { status, message,
+        // data, meta } ; SeekNow renvoie { success, results|profile|…,
+        // credits_remaining }. On normalise vers { list, total }.
+        const route = q.provider === 'seeknow' ? `/api/seeknow/${q.key}` : `/api/seek/${q.key}`;
+        const res: any = await apiPost(route, q.payload);
 
-        // BrixHub envelope: res.data = { status, message, data, meta }
-        // res.data.data is either { results: [...] } (search) or a single
-        // profile object (lookup_*).
-        const env  = res?.data;
-        const body = env?.data;
-        const list: any[] = Array.isArray(body?.results) ? body.results
-          : body && typeof body === 'object' ? [body]
-          : [];
-        const total = env?.meta?.total ?? list.length;
+        let list: any[] = [];
+        let total = 0;
+        let took: number | undefined;
+
+        if (q.provider === 'brixhub') {
+          const env  = res?.data;
+          const body = env?.data;
+          list = Array.isArray(body?.results) ? body.results
+               : body && typeof body === 'object' ? [body]
+               : [];
+          total = env?.meta?.total ?? list.length;
+          took  = env?.meta?.took_ms;
+        } else {
+          // SeekNow envelope : `data` = body upstream { success, results?,
+          // profile?, found_on?, history?, … }. On scanne les champs connus.
+          const body = res?.data;
+          if (body && typeof body === 'object') {
+            if (Array.isArray(body.results))   list = body.results;
+            else if (Array.isArray(body.found_on)) list = body.found_on;
+            else if (Array.isArray(body.history))  list = body.history;
+            else if (body.profile && typeof body.profile === 'object') list = [body.profile];
+            else if (body.roblox  && typeof body.roblox  === 'object') list = [body.roblox];
+            else if (Object.keys(body).filter(k => !['success','credits_remaining'].includes(k)).length) {
+              list = [body];
+            }
+          }
+          total = body?.total ?? list.length;
+        }
 
         const f: Finding = {
           id: `multi-${i}`, source: q.label, category: 'identity',
           status: list.length ? 'ok' : 'empty',
           severity: list.length > 5 ? 'medium' : list.length > 0 ? 'medium' : 'info',
           title: `${total} résultat${total > 1 ? 's' : ''}${res?.cached ? ' (cache)' : ''}`,
-          detail: env?.meta?.took_ms != null ? `${env.meta.took_ms} ms` : undefined,
+          detail: took != null ? `${took} ms` : undefined,
           profiles: list,
           durationMs: performance.now() - t0,
         };
-        if (res?.credits_remaining != null) setCredits(res.credits_remaining);
+        if (q.provider === 'brixhub' && res?.credits_remaining != null) setCredits(res.credits_remaining);
         setFindings(prev => prev.map(x => x.id === `multi-${i}` ? f : x));
       } catch (e: any) {
         setFindings(prev => prev.map(x => x.id === `multi-${i}` ? errorFinding(`multi-${i}`, q.label, 'identity', e.message, performance.now() - t0) : x));
