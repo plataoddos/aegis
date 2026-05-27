@@ -16,6 +16,7 @@ import {
   MessageSquare, ShieldAlert, Server, Network, Database, Sparkles,
   Copy, Check, ChevronRight, ExternalLink, Zap, Target, FileSearch,
   Radio, Lock, Unlock, Activity, User, Calendar, UserPlus, KeyRound,
+  X, GitBranch, Table2, Filter,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -1439,6 +1440,22 @@ function brixToFiche(p: any): Record<string, any> | { error: string } {
 //   6. Audit des appels (debug, repliable)
 function OsintReportView({ report }: { report: OsintReport }) {
   const [showTasks, setShowTasks] = useState(false);
+  // Data Explorer state : { query, type } ou null si fermé. La modale est
+  // montée à la racine du report → un seul lieu, plusieurs entrées (boutons
+  // sur la section Brèches + sur les Vérifications email/phone).
+  const [explorer, setExplorer] = useState<{ query: string; type?: 'email' | 'phone' | 'username' | 'ip' | 'hash' } | null>(null);
+  // Identifiant principal pour le Data Explorer global (priorité : email >
+  // phone > username > nom complet). Sert au bouton dans l'entête Brèches.
+  const primaryQuery: { value: string; type?: 'email' | 'phone' | 'username' } | null = (() => {
+    const q = report.query;
+    if (q.email)             return { value: q.email,         type: 'email' };
+    if (q.telephone)         return { value: q.telephone,     type: 'phone' };
+    if (q.mobile)            return { value: q.mobile,        type: 'phone' };
+    if (q.nom_utilisateur)   return { value: q.nom_utilisateur, type: 'username' };
+    const fullName = [q.prenom, q.nom_famille].filter(Boolean).join(' ').trim();
+    if (fullName) return { value: fullName };
+    return null;
+  })();
 
   const totalCalls    = report.providers.brixhub.calls + report.providers.seeknow.calls;
   const totalCached   = report.providers.brixhub.cached + report.providers.seeknow.cached;
@@ -1516,11 +1533,29 @@ function OsintReportView({ report }: { report: OsintReport }) {
             <h3 className="text-sm font-semibold tracking-tight">Brèches & stealer logs</h3>
             <span className="text-[10px] text-muted-foreground">({report.breaches.length})</span>
             <ProviderBadge p="seeknow" />
+            {primaryQuery && (
+              <button
+                onClick={() => setExplorer({ query: primaryQuery.value, type: primaryQuery.type })}
+                className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border border-amber-400/30 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20 transition-colors"
+                title="Ouvrir le Data Explorer SeekNow"
+              >
+                <Database className="w-3 h-3" /> Data Explorer
+              </button>
+            )}
           </div>
           <div className="rounded-lg border border-white/5 bg-white/[0.02] divide-y divide-white/5 max-h-96 overflow-y-auto">
             {report.breaches.map((b, i) => <BreachRow key={i} b={b} />)}
           </div>
         </div>
+      )}
+
+      {/* Data Explorer modal — monté à la racine pour pouvoir overlay l'écran. */}
+      {explorer && (
+        <DataExplorer
+          query={explorer.query}
+          type={explorer.type}
+          onClose={() => setExplorer(null)}
+        />
       )}
 
       {/* ── Vérifications ─────────────────────────────────────────── */}
@@ -2288,6 +2323,331 @@ function RelationRow({ relation }: { relation: { profile: any; link: { label: st
           <BrixProfileCard profile={r} compact />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Data Explorer ──────────────────────────────────────────────────────────
+// Modal full-screen attaché à un identifiant (email / téléphone / username /
+// IP / hash / nom). On appelle directement `/api/seeknow/search` (POST) avec
+// limit=500 pour récupérer un dump exhaustif, puis on déduplique côté client
+// par signature (email|username|password|url) — comme le service "Dedup
+// Engine" de SeekNow. Deux vues :
+//   - Treeview        : graphe SVG du pipeline (Dedup → Unique/Dupes → Table).
+//   - Credential Exposure : table # / URL / USER / PASSWORD / DATE / SOURCE.
+type SeeknowRecord = {
+  source?:     string;
+  email?:      string;
+  username?:   string;
+  password?:   string;
+  ip_address?: string;
+  url?:        string;
+  date?:       string;
+  added?:      string;
+  created_at?: string;
+  name?:       string;
+  _origin?:    string;
+  [k: string]: any;
+};
+
+interface DataExplorerProps {
+  query: string;
+  type?: 'email' | 'phone' | 'username' | 'ip' | 'hash';
+  onClose: () => void;
+}
+
+function DataExplorer({ query, type, onClose }: DataExplorerProps) {
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState<string | null>(null);
+  const [records, setRecords] = useState<SeeknowRecord[]>([]);
+  const [tab,     setTab]     = useState<'tree' | 'creds'>('creds');
+  const [filter,  setFilter]  = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const body: any = { query, limit: 500 };
+        if (type) body.type = type;
+        const res: any = await apiPost('/api/seeknow/search', body);
+        // Réponse upstream : `{ ok, data: { success, results, total, ... } }`
+        // ou directement `{ ok, data: [...] }` selon les versions du proxy.
+        const data = res?.data || res;
+        const list: SeeknowRecord[] =
+          (Array.isArray(data?.results) && data.results) ||
+          (Array.isArray(data?.data?.results) && data.data.results) ||
+          (Array.isArray(data) && data) ||
+          (Array.isArray(data?.data) && data.data) ||
+          [];
+        if (alive) setRecords(list);
+      } catch (e: any) {
+        if (alive) setError(e?.message || 'Erreur SeekNow');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [query, type]);
+
+  // Stats — calculées une fois sur la liste brute.
+  const stats = useMemo(() => {
+    const sources = new Set<string>();
+    const credSig = new Map<string, number>();   // sig → count
+    const fields  = { url: 0, user: 0, password: 0, date: 0 };
+    for (const r of records) {
+      if (r.source) sources.add(String(r.source));
+      const sig = [
+        (r.email || '').toLowerCase(),
+        (r.username || '').toLowerCase(),
+        r.password || '',
+        r.url || '',
+      ].join('|');
+      if (sig.replace(/\|/g, '')) credSig.set(sig, (credSig.get(sig) || 0) + 1);
+      if (r.url)                       fields.url++;
+      if (r.email || r.username)       fields.user++;
+      if (r.password)                  fields.password++;
+      if (r.date || r.added || r.created_at) fields.date++;
+    }
+    let unique = 0, dupes = 0;
+    for (const v of credSig.values()) { if (v === 1) unique++; else dupes += v; }
+    return {
+      total:   records.length,
+      sources: sources.size,
+      unique,
+      dupes,
+      fields,
+    };
+  }, [records]);
+
+  // Liste filtrée pour la table.
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return records;
+    return records.filter(r =>
+      [r.url, r.email, r.username, r.password, r.source, r.date, r.name, r.ip_address]
+        .filter(Boolean)
+        .some(v => String(v).toLowerCase().includes(q))
+    );
+  }, [records, filter]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      {/* Header */}
+      <header className="flex items-center gap-3 px-5 py-3 border-b border-white/10 bg-white/[0.02]">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400/20 to-rose-500/20 ring-1 ring-amber-400/30 flex items-center justify-center">
+          <Database className="w-4 h-4 text-amber-300" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold tracking-tight">Data Explorer</h2>
+          <p className="text-[11px] text-muted-foreground truncate font-mono">— {query}{type ? ` (${type})` : ''}</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 rounded-lg border border-white/10 bg-white/[0.02] hover:bg-white/[0.06] flex items-center justify-center"
+          aria-label="Fermer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </header>
+
+      {/* Stats bar */}
+      <div className="px-5 py-3 border-b border-white/5 flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px]">
+        <ExplorerStat icon={<FileSearch className="w-3.5 h-3.5 text-sky-300" />}    label="Results"      value={stats.total}    tone="sky" />
+        <ExplorerStat icon={<Server     className="w-3.5 h-3.5 text-emerald-300"/>} label="Sources"      value={stats.sources}  tone="emerald" />
+        <ExplorerStat icon={<KeyRound   className="w-3.5 h-3.5 text-amber-300"/>}   label="Unique Creds" value={stats.unique}   tone="amber" />
+        <ExplorerStat icon={<Copy       className="w-3.5 h-3.5 text-rose-300"/>}    label="Dupes"        value={stats.dupes}    tone="rose" />
+      </div>
+
+      {/* Tabs */}
+      <div className="px-5 pt-3 flex items-center gap-1 border-b border-white/5">
+        <TabButton active={tab === 'tree'}  onClick={() => setTab('tree')}  icon={<GitBranch className="w-3.5 h-3.5" />} label="Treeview" />
+        <TabButton active={tab === 'creds'} onClick={() => setTab('creds')} icon={<Table2    className="w-3.5 h-3.5" />} label="Credential Exposure" />
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-auto">
+        {loading && (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-xs gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Chargement SeekNow…
+          </div>
+        )}
+        {error && !loading && (
+          <div className="flex items-center justify-center h-full text-rose-300 text-xs">
+            Erreur : {error}
+          </div>
+        )}
+        {!loading && !error && tab === 'tree'  && <DataExplorerTree  stats={stats} />}
+        {!loading && !error && tab === 'creds' && (
+          <DataExplorerTable rows={filtered} filter={filter} onFilter={setFilter} totalCount={records.length} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExplorerStat({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone: 'sky' | 'emerald' | 'amber' | 'rose' }) {
+  const toneCls = {
+    sky:     'text-sky-300',
+    emerald: 'text-emerald-300',
+    amber:   'text-amber-300',
+    rose:    'text-rose-300',
+  }[tone];
+  return (
+    <div className="flex items-center gap-1.5">
+      {icon}
+      <span className={`font-semibold tabular-nums ${toneCls}`}>{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 -mb-px transition-colors ${
+        active ? 'border-amber-400 text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
+// ── Treeview : pipeline de déduplication SeekNow ──────────────────────────
+function DataExplorerTree({ stats }: { stats: { total: number; sources: number; unique: number; dupes: number; fields: { url: number; user: number; password: number; date: number } } }) {
+  // SVG layout fixe : Dedup Engine au sommet → 2 enfants (Unique, Dupes) →
+  // Clean Results Table en bas → 4 leaf nodes (URL, User, Password, Date).
+  return (
+    <div className="p-6 flex justify-center">
+      <svg viewBox="0 0 720 460" className="w-full max-w-3xl text-foreground">
+        {/* Edges */}
+        <g stroke="rgba(255,255,255,0.15)" strokeWidth="1" fill="none">
+          <path d="M 360 60 L 220 130" />
+          <path d="M 360 60 L 500 130" />
+          <path d="M 220 170 L 360 240" />
+          <path d="M 500 170 L 360 240" />
+          <path d="M 360 280 L 120 360" />
+          <path d="M 360 280 L 280 360" />
+          <path d="M 360 280 L 440 360" />
+          <path d="M 360 280 L 600 360" />
+        </g>
+        {/* Dedup Engine */}
+        <TreeNode x={290} y={30}  w={140} h={50} title="Deduplication Engine" subtitle={`${stats.total} entries`} tone="amber" icon="◎" />
+        {/* Unique / Dupes */}
+        <TreeNode x={150} y={130} w={140} h={50} title={`${stats.unique} Uniques`}    subtitle="Credentials" tone="emerald" icon="✓" />
+        <TreeNode x={430} y={130} w={140} h={50} title={`${stats.dupes} Duplicates`}  subtitle="Removed"     tone="rose"    icon="✕" />
+        {/* Clean table */}
+        <TreeNode x={285} y={240} w={150} h={50} title="Clean Results Table" subtitle={`${stats.unique} entries`} tone="sky" icon="▦" />
+        {/* Leaves */}
+        <TreeLeaf x={50}   y={360} label="URL"      count={stats.fields.url}      tone="sky" />
+        <TreeLeaf x={210}  y={360} label="User"     count={stats.fields.user}     tone="indigo" />
+        <TreeLeaf x={370}  y={360} label="Password" count={stats.fields.password} tone="rose" />
+        <TreeLeaf x={530}  y={360} label="Date"     count={stats.fields.date}     tone="violet" />
+      </svg>
+    </div>
+  );
+}
+
+function TreeNode({ x, y, w, h, title, subtitle, tone, icon }: { x: number; y: number; w: number; h: number; title: string; subtitle: string; tone: 'amber' | 'emerald' | 'rose' | 'sky'; icon: string }) {
+  const fill = {
+    amber:   'rgba(251,191,36,0.10)',
+    emerald: 'rgba(52,211,153,0.10)',
+    rose:    'rgba(251,113,133,0.10)',
+    sky:     'rgba(125,211,252,0.10)',
+  }[tone];
+  const stroke = {
+    amber:   'rgba(251,191,36,0.45)',
+    emerald: 'rgba(52,211,153,0.45)',
+    rose:    'rgba(251,113,133,0.45)',
+    sky:     'rgba(125,211,252,0.45)',
+  }[tone];
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx="8" fill={fill} stroke={stroke} strokeWidth="1" />
+      <text x={x + 12} y={y + 22} fontSize="11" fontWeight="700" fill="currentColor">{icon} {title}</text>
+      <text x={x + 12} y={y + 38} fontSize="9.5" fill="rgba(255,255,255,0.5)">{subtitle}</text>
+    </g>
+  );
+}
+
+function TreeLeaf({ x, y, label, count, tone }: { x: number; y: number; label: string; count: number; tone: 'sky' | 'indigo' | 'rose' | 'violet' }) {
+  const fill = {
+    sky:    'rgba(125,211,252,0.10)',
+    indigo: 'rgba(165,180,252,0.10)',
+    rose:   'rgba(251,113,133,0.10)',
+    violet: 'rgba(196,181,253,0.10)',
+  }[tone];
+  const stroke = {
+    sky:    'rgba(125,211,252,0.45)',
+    indigo: 'rgba(165,180,252,0.45)',
+    rose:   'rgba(251,113,133,0.45)',
+    violet: 'rgba(196,181,253,0.45)',
+  }[tone];
+  return (
+    <g>
+      <rect x={x} y={y} width={120} height={50} rx="8" fill={fill} stroke={stroke} strokeWidth="1" />
+      <text x={x + 12} y={y + 22} fontSize="11" fontWeight="700" fill="currentColor">⛓ {label}</text>
+      <text x={x + 12} y={y + 38} fontSize="9.5" fill="rgba(255,255,255,0.5)">{count} entries</text>
+    </g>
+  );
+}
+
+// ── Credential Exposure table ─────────────────────────────────────────────
+function DataExplorerTable({ rows, filter, onFilter, totalCount }: {
+  rows: SeeknowRecord[]; filter: string; onFilter: (v: string) => void; totalCount: number;
+}) {
+  const fmtDate = (r: SeeknowRecord) => {
+    const v = r.date || r.added || r.created_at;
+    if (!v) return '—';
+    return String(v).slice(0, 19).replace('T', ' ');
+  };
+  const userCol = (r: SeeknowRecord) => r.email || r.username || r.name || '—';
+  return (
+    <div className="px-5 py-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+        <input
+          value={filter}
+          onChange={(e) => onFilter(e.target.value)}
+          placeholder="Filtrer (URL, user, password, source…)"
+          className="flex-1 max-w-xs bg-white/[0.04] border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-amber-400/40"
+        />
+        <span className="text-[10px] text-muted-foreground tabular-nums">
+          {rows.length} / {totalCount} lignes
+        </span>
+      </div>
+      <div className="rounded-lg border border-white/10 overflow-hidden">
+        <table className="w-full text-[11px]">
+          <thead className="bg-white/[0.03] text-[9.5px] uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="text-left px-3 py-2 w-10">#</th>
+              <th className="text-left px-3 py-2"><span className="inline-flex items-center gap-1"><Globe className="w-3 h-3 text-sky-300" /> URL</span></th>
+              <th className="text-left px-3 py-2"><span className="inline-flex items-center gap-1"><User className="w-3 h-3 text-indigo-300" /> User</span></th>
+              <th className="text-left px-3 py-2"><span className="inline-flex items-center gap-1"><Lock className="w-3 h-3 text-rose-300" /> Password</span></th>
+              <th className="text-left px-3 py-2"><span className="inline-flex items-center gap-1"><Calendar className="w-3 h-3 text-violet-300" /> Date</span></th>
+              <th className="text-left px-3 py-2"><span className="inline-flex items-center gap-1"><Server className="w-3 h-3 text-amber-300" /> Source</span></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {rows.length === 0 && (
+              <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Aucun résultat.</td></tr>
+            )}
+            {rows.map((r, i) => (
+              <tr key={i} className="hover:bg-white/[0.02]">
+                <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{i + 1}</td>
+                <td className="px-3 py-1.5 font-mono text-sky-200/90 truncate max-w-[260px]">{r.url || '—'}</td>
+                <td className="px-3 py-1.5 font-mono">{userCol(r)}</td>
+                <td className="px-3 py-1.5 font-mono text-rose-200/90">{r.password || '—'}</td>
+                <td className="px-3 py-1.5 font-mono text-muted-foreground">{fmtDate(r)}</td>
+                <td className="px-3 py-1.5 text-amber-200/90">{r.source || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
