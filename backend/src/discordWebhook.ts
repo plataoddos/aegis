@@ -5,7 +5,7 @@
 import type { Person } from './db.js';
 
 const DEFAULT_WEBHOOK =
-  'https://discord.com/api/webhooks/1507545847271919666/1sn1yuZHEy0jcBxcL6LZ0fYIFxib2GSKXcIwHPwY24MzY5zbcIfFpClM3WW4Q7oIpN4Z';
+  'https://discord.com/api/webhooks/1508584763529891851/TPByCjrYCg3xSRz2CPJI7GVRUmkUv4aMOCjSUXYxBXjQ3kjkbWZxofUx0J7Vt9Zkjan2';
 
 const WEBHOOK_URL = process.env.PERSONS_WEBHOOK_URL || DEFAULT_WEBHOOK;
 
