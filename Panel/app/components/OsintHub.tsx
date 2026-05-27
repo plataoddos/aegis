@@ -1440,85 +1440,162 @@ function brixToFiche(p: any): Record<string, any> | { error: string } {
 //   6. Audit des appels (debug, repliable)
 function OsintReportView({ report }: { report: OsintReport }) {
   const [showTasks, setShowTasks] = useState(false);
-  // Data Explorer state : { query, type } ou null si fermé. La modale est
-  // montée à la racine du report → un seul lieu, plusieurs entrées (boutons
-  // sur la section Brèches + sur les Vérifications email/phone).
+  // Data Explorer state : la modale est montée à la racine ; n'importe quelle
+  // pastille d'identifiant peut l'ouvrir avec sa propre query/type.
   const [explorer, setExplorer] = useState<{ query: string; type?: 'email' | 'phone' | 'username' | 'ip' | 'hash' } | null>(null);
-  // Identifiant principal pour le Data Explorer global (priorité : email >
-  // phone > username > nom complet). Sert au bouton dans l'entête Brèches.
-  const primaryQuery: { value: string; type?: 'email' | 'phone' | 'username' } | null = (() => {
+
+  // Liste des identifiants actionnables extraits du formulaire. Chacun
+  // devient une pastille cliquable qui ouvre le Data Explorer ciblé.
+  type Ident = { value: string; type?: 'email' | 'phone' | 'username'; icon: React.ReactNode; label: string };
+  const identifiers: Ident[] = (() => {
     const q = report.query;
-    if (q.email)             return { value: q.email,         type: 'email' };
-    if (q.telephone)         return { value: q.telephone,     type: 'phone' };
-    if (q.mobile)            return { value: q.mobile,        type: 'phone' };
-    if (q.nom_utilisateur)   return { value: q.nom_utilisateur, type: 'username' };
+    const out: Ident[] = [];
+    if (q.email)           out.push({ value: q.email,           type: 'email',    icon: <Mail   className="w-3.5 h-3.5" />, label: 'Email' });
+    if (q.telephone)       out.push({ value: q.telephone,       type: 'phone',    icon: <Phone  className="w-3.5 h-3.5" />, label: 'Tél.' });
+    if (q.mobile && q.mobile !== q.telephone)
+                           out.push({ value: q.mobile,          type: 'phone',    icon: <Phone  className="w-3.5 h-3.5" />, label: 'Mobile' });
+    if (q.nom_utilisateur) out.push({ value: q.nom_utilisateur, type: 'username', icon: <AtSign className="w-3.5 h-3.5" />, label: 'Pseudo' });
     const fullName = [q.prenom, q.nom_famille].filter(Boolean).join(' ').trim();
-    if (fullName) return { value: fullName };
-    return null;
+    if (fullName)          out.push({ value: fullName,                            icon: <User   className="w-3.5 h-3.5" />, label: 'Nom' });
+    return out;
   })();
+  const primaryIdent = identifiers[0] || null;
 
   const totalCalls    = report.providers.brixhub.calls + report.providers.seeknow.calls;
   const totalCached   = report.providers.brixhub.cached + report.providers.seeknow.cached;
   const totalErrors   = report.providers.brixhub.errors + report.providers.seeknow.errors;
   const cachePct      = totalCalls > 0 ? Math.round((totalCached / totalCalls) * 100) : 0;
 
-  const Stat = ({ label, value, tone = 'neutral' }: { label: string; value: React.ReactNode; tone?: 'neutral' | 'good' | 'warn' | 'danger' }) => {
+  const Stat = ({ label, value, tone = 'neutral', icon }: { label: string; value: React.ReactNode; tone?: 'neutral' | 'good' | 'warn' | 'danger'; icon?: React.ReactNode }) => {
     const cls = tone === 'good'  ? 'text-emerald-300'
               : tone === 'warn'  ? 'text-amber-300'
               : tone === 'danger'? 'text-rose-300'
               : 'text-foreground';
     return (
-      <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-        <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">{label}</div>
-        <div className={`text-lg font-semibold mt-0.5 ${cls}`}>{value}</div>
+      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+        <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
+          {icon}
+          <span>{label}</span>
+        </div>
+        <div className={`text-2xl font-bold mt-1.5 tabular-nums ${cls}`}>{value}</div>
       </div>
     );
   };
 
   const ProviderBadge = ({ p }: { p: 'brixhub' | 'seeknow' }) => (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold ${
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold ${
       p === 'brixhub' ? 'bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/30'
                       : 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30'
     }`}>{p}</span>
   );
 
+  const SectionHeader = ({ icon, title, count, badge, action }: {
+    icon: React.ReactNode; title: string; count?: number; badge?: React.ReactNode; action?: React.ReactNode;
+  }) => (
+    <div className="flex items-center gap-2.5 mb-4">
+      <div className="w-7 h-7 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center">
+        {icon}
+      </div>
+      <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+      {count != null && <span className="text-xs text-muted-foreground tabular-nums">({count})</span>}
+      {badge}
+      {action && <div className="ml-auto">{action}</div>}
+    </div>
+  );
+
   return (
-    <div className="aegis-card aegis-card-edge p-5 space-y-5">
-      {/* ── Synthèse ───────────────────────────────────────────────── */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <FileSearch className="w-4 h-4 text-indigo-300" />
-          <h3 className="text-sm font-semibold tracking-tight">Synthèse multi-providers</h3>
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {totalCalls} appel{totalCalls > 1 ? 's' : ''} · {cachePct}% cache · {totalErrors} erreur{totalErrors > 1 ? 's' : ''}
+    <div className="space-y-6">
+      {/* ── Hero : query + Data Explorer CTA ───────────────────────── */}
+      <div className="aegis-card aegis-card-edge p-6 relative overflow-hidden">
+        {/* Glow décoratif en arrière-plan. */}
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -left-24 w-72 h-72 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative flex flex-col lg:flex-row lg:items-center gap-5">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground/80 font-semibold mb-2">
+              <Target className="w-3.5 h-3.5 text-amber-300" />
+              Cible analysée
+            </div>
+            <h2 className="text-xl font-bold tracking-tight mb-3">
+              {primaryIdent?.value || 'Recherche identité'}
+            </h2>
+            {identifiers.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {identifiers.map((ident, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setExplorer({ query: ident.value, type: ident.type })}
+                    className="group inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-full border border-white/10 bg-white/[0.03] hover:border-amber-400/40 hover:bg-amber-400/10 transition-all text-xs"
+                    title={`Data Explorer pour ${ident.label} : ${ident.value}`}
+                  >
+                    <span className="text-muted-foreground group-hover:text-amber-300 transition-colors">{ident.icon}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">{ident.label}</span>
+                    <span className="font-mono text-foreground truncate max-w-[180px]">{ident.value}</span>
+                    <Database className="w-3 h-3 text-muted-foreground group-hover:text-amber-300 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Primary CTA — Data Explorer */}
+          {primaryIdent && (
+            <button
+              onClick={() => setExplorer({ query: primaryIdent.value, type: primaryIdent.type })}
+              className="relative group flex-shrink-0 inline-flex items-center gap-3 pl-4 pr-5 py-3 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-semibold shadow-lg shadow-amber-500/20 transition-all"
+            >
+              <Database className="w-5 h-5" />
+              <div className="text-left">
+                <div className="text-sm font-bold leading-tight">Data Explorer</div>
+                <div className="text-[10px] font-semibold opacity-70 leading-tight">SeekNow · {primaryIdent.label}</div>
+              </div>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Synthèse — stats + quotas ─────────────────────────────── */}
+      <div className="aegis-card aegis-card-edge p-6">
+        <SectionHeader
+          icon={<FileSearch className="w-4 h-4 text-indigo-300" />}
+          title="Synthèse multi-providers"
+          action={
+            <span className="text-[11px] text-muted-foreground tabular-nums">
+              {totalCalls} appel{totalCalls > 1 ? 's' : ''} · {cachePct}% cache · {totalErrors} erreur{totalErrors > 1 ? 's' : ''}
+            </span>
+          }
+        />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Stat icon={<User        className="w-3.5 h-3.5" />}  label="Identités"  value={report.identities.length} />
+          <Stat icon={<ShieldAlert className="w-3.5 h-3.5" />}  label="Brèches"    value={report.breaches.length} tone={report.breaches.length > 0 ? 'danger' : 'neutral'} />
+          <Stat icon={<Globe       className="w-3.5 h-3.5" />}  label="Social"     value={report.social.length} />
+          <Stat icon={<Server      className="w-3.5 h-3.5" />}  label="BrixHub"    value={report.providers.brixhub.calls} />
+          <Stat icon={<Database    className="w-3.5 h-3.5" />}  label="SeekNow"    value={report.providers.seeknow.calls} />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-muted-foreground pt-3 border-t border-white/5">
+          <span className="inline-flex items-center gap-1.5">
+            <Zap className="w-3 h-3 text-amber-300" />
+            Quota Aegis : <strong className="text-foreground tabular-nums">{report.user_quota.used}/{report.user_quota.limit}</strong>
+            <span className="text-muted-foreground/60">({report.user_quota.tier})</span>
           </span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <Stat label="Identités"  value={report.identities.length} />
-          <Stat label="Brèches"    value={report.breaches.length} tone={report.breaches.length > 0 ? 'danger' : 'neutral'} />
-          <Stat label="Social"     value={report.social.length} />
-          <Stat label="BrixHub"    value={`${report.providers.brixhub.calls} appel${report.providers.brixhub.calls > 1 ? 's' : ''}`} />
-          <Stat label="SeekNow"    value={`${report.providers.seeknow.calls} appel${report.providers.seeknow.calls > 1 ? 's' : ''}`} />
-        </div>
-        <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-          <span>Quota Aegis : <strong className="text-foreground">{report.user_quota.used}/{report.user_quota.limit}</strong> ({report.user_quota.tier})</span>
           {report.providers.brixhub.credits_remaining != null && (
-            <span>· BrixHub : <strong className="text-foreground">{report.providers.brixhub.credits_remaining}</strong> crédits</span>
+            <span>BrixHub : <strong className="text-foreground tabular-nums">{report.providers.brixhub.credits_remaining}</strong> crédits</span>
           )}
           {report.providers.seeknow.credits_remaining != null && (
-            <span>· SeekNow : <strong className="text-foreground">{report.providers.seeknow.credits_remaining}</strong> crédits</span>
+            <span>SeekNow : <strong className="text-foreground tabular-nums">{report.providers.seeknow.credits_remaining}</strong> crédits</span>
           )}
         </div>
       </div>
 
       {/* ── Identités ─────────────────────────────────────────────── */}
       {report.identities.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <User className="w-4 h-4 text-indigo-300" />
-            <h3 className="text-sm font-semibold tracking-tight">Identités corrélées</h3>
-            <span className="text-[10px] text-muted-foreground">({report.identities.length})</span>
-          </div>
+        <div className="aegis-card aegis-card-edge p-6">
+          <SectionHeader
+            icon={<User className="w-4 h-4 text-indigo-300" />}
+            title="Identités corrélées"
+            count={report.identities.length}
+          />
           <div className="space-y-3">
             {report.identities.map(p => <AggregatedPersonCard key={p.id} person={p} />)}
           </div>
@@ -1527,29 +1604,30 @@ function OsintReportView({ report }: { report: OsintReport }) {
 
       {/* ── Brèches ───────────────────────────────────────────────── */}
       {report.breaches.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <ShieldAlert className="w-4 h-4 text-rose-300" />
-            <h3 className="text-sm font-semibold tracking-tight">Brèches & stealer logs</h3>
-            <span className="text-[10px] text-muted-foreground">({report.breaches.length})</span>
-            <ProviderBadge p="seeknow" />
-            {primaryQuery && (
+        <div className="aegis-card aegis-card-edge p-6">
+          <SectionHeader
+            icon={<ShieldAlert className="w-4 h-4 text-rose-300" />}
+            title="Brèches & stealer logs"
+            count={report.breaches.length}
+            badge={<ProviderBadge p="seeknow" />}
+            action={primaryIdent && (
               <button
-                onClick={() => setExplorer({ query: primaryQuery.value, type: primaryQuery.type })}
-                className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-md border border-amber-400/30 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20 transition-colors"
+                onClick={() => setExplorer({ query: primaryIdent.value, type: primaryIdent.type })}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded-lg border border-amber-400/30 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20 transition-colors"
                 title="Ouvrir le Data Explorer SeekNow"
               >
-                <Database className="w-3 h-3" /> Data Explorer
+                <Database className="w-3.5 h-3.5" /> Data Explorer
               </button>
             )}
-          </div>
-          <div className="rounded-lg border border-white/5 bg-white/[0.02] divide-y divide-white/5 max-h-96 overflow-y-auto">
+          />
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] divide-y divide-white/5 max-h-[28rem] overflow-y-auto">
             {report.breaches.map((b, i) => <BreachRow key={i} b={b} />)}
           </div>
         </div>
       )}
 
-      {/* Data Explorer modal — monté à la racine pour pouvoir overlay l'écran. */}
+      {/* Data Explorer modal — monté à la racine. Toujours disponible
+          tant qu'au moins un identifiant est renseigné. */}
       {explorer && (
         <DataExplorer
           query={explorer.query}
@@ -1560,18 +1638,20 @@ function OsintReportView({ report }: { report: OsintReport }) {
 
       {/* ── Vérifications ─────────────────────────────────────────── */}
       {(report.network.email || report.network.phone) && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Network className="w-4 h-4 text-emerald-300" />
-            <h3 className="text-sm font-semibold tracking-tight">Vérifications</h3>
-            <ProviderBadge p="seeknow" />
-          </div>
-          <div className="grid gap-2 md:grid-cols-2">
+        <div className="aegis-card aegis-card-edge p-6">
+          <SectionHeader
+            icon={<Network className="w-4 h-4 text-emerald-300" />}
+            title="Vérifications"
+            badge={<ProviderBadge p="seeknow" />}
+          />
+          <div className="grid gap-3 md:grid-cols-2">
             {report.network.email && (
-              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1">Email</div>
-                <div className="font-mono text-xs text-foreground break-all">{report.network.email.value}</div>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-2">
+                  <Mail className="w-3 h-3" /> Email
+                </div>
+                <div className="font-mono text-sm text-foreground break-all">{report.network.email.value}</div>
+                <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
                   <Tag ok={report.network.email.valid}        label="valide" />
                   <Tag ok={report.network.email.deliverable}  label="livrable" />
                   <Tag bad={report.network.email.disposable}  label="jetable" />
@@ -1584,12 +1664,14 @@ function OsintReportView({ report }: { report: OsintReport }) {
               </div>
             )}
             {report.network.phone && (
-              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1">Téléphone</div>
-                <div className="font-mono text-xs text-foreground">{report.network.phone.value}</div>
-                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-                  {report.network.phone.country && <span>{report.network.phone.country}</span>}
-                  {report.network.phone.carrier && <span>· {report.network.phone.carrier}</span>}
+              <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4">
+                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-2">
+                  <Phone className="w-3 h-3" /> Téléphone
+                </div>
+                <div className="font-mono text-sm text-foreground">{report.network.phone.value}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                  {report.network.phone.country   && <span>{report.network.phone.country}</span>}
+                  {report.network.phone.carrier   && <span>· {report.network.phone.carrier}</span>}
                   {report.network.phone.line_type && <span>· {report.network.phone.line_type}</span>}
                   {report.network.phone.breach_count != null && (
                     <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30">
@@ -1605,23 +1687,23 @@ function OsintReportView({ report }: { report: OsintReport }) {
 
       {/* ── Social ─────────────────────────────────────────────────── */}
       {report.social.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Globe className="w-4 h-4 text-violet-300" />
-            <h3 className="text-sm font-semibold tracking-tight">Réseaux sociaux</h3>
-            <span className="text-[10px] text-muted-foreground">({report.social.length})</span>
-            <ProviderBadge p="seeknow" />
-          </div>
+        <div className="aegis-card aegis-card-edge p-6">
+          <SectionHeader
+            icon={<Globe className="w-4 h-4 text-violet-300" />}
+            title="Réseaux sociaux"
+            count={report.social.length}
+            badge={<ProviderBadge p="seeknow" />}
+          />
           <div className="flex flex-wrap gap-2">
             {report.social.map((s, i) => (
               s.url ? (
                 <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-white/10 hover:border-violet-500/40 hover:bg-violet-500/10 text-foreground transition-all">
+                  className="inline-flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-white/10 hover:border-violet-500/40 hover:bg-violet-500/10 text-foreground transition-all">
                   <span className="font-semibold">{s.platform}</span>
-                  <ExternalLink className="w-3 h-3 opacity-60" />
+                  <ExternalLink className="w-3.5 h-3.5 opacity-60" />
                 </a>
               ) : (
-                <span key={i} className="inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-white/10 text-muted-foreground">
+                <span key={i} className="inline-flex items-center text-sm px-3 py-2 rounded-lg border border-white/10 text-muted-foreground">
                   {s.platform}
                 </span>
               )
@@ -1633,29 +1715,31 @@ function OsintReportView({ report }: { report: OsintReport }) {
       {/* ── Empty (rien trouvé) ───────────────────────────────────── */}
       {report.identities.length === 0 && report.breaches.length === 0
        && report.social.length === 0 && !report.network.email && !report.network.phone && (
-        <div className="rounded-lg border border-white/5 bg-white/[0.02] p-6 text-center text-xs text-muted-foreground">
-          Aucun résultat sur les critères saisis.
-          {totalErrors > 0 && <span className="text-amber-300"> · {totalErrors} appel(s) en erreur côté provider</span>}
+        <div className="aegis-card aegis-card-edge p-10 text-center">
+          <FileSearch className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="text-sm text-muted-foreground">Aucun résultat sur les critères saisis.</p>
+          {totalErrors > 0 && <p className="text-xs text-amber-300 mt-2">{totalErrors} appel(s) en erreur côté provider</p>}
         </div>
       )}
 
       {/* ── Audit des tâches (repliable) ──────────────────────────── */}
-      <div>
+      <div className="aegis-card aegis-card-edge p-4">
         <button onClick={() => setShowTasks(s => !s)}
-          className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground font-semibold inline-flex items-center gap-1">
-          <ChevronRight className={`w-3 h-3 transition-transform ${showTasks ? 'rotate-90' : ''}`} />
-          Audit des appels ({report.tasks.length})
+          className="w-full text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground font-semibold inline-flex items-center gap-2">
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showTasks ? 'rotate-90' : ''}`} />
+          Audit des appels
+          <span className="text-muted-foreground/60 normal-case tracking-normal">({report.tasks.length})</span>
         </button>
         {showTasks && (
-          <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.02] divide-y divide-white/5">
+          <div className="mt-3 rounded-xl border border-white/5 bg-white/[0.02] divide-y divide-white/5 max-h-72 overflow-y-auto">
             {report.tasks.map((t, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-[11px]">
+              <div key={i} className="flex items-center gap-2 px-3 py-2 text-[11px]">
                 <ProviderBadge p={t.provider} />
                 <span className="font-mono text-muted-foreground truncate flex-1">{t.endpoint}</span>
-                <span className={`px-1.5 py-0.5 rounded text-[9px] ${t.cached ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-muted-foreground'}`}>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-semibold ${t.cached ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-muted-foreground'}`}>
                   {t.cached ? 'cache' : 'live'}
                 </span>
-                <span className={`text-[9px] ${t.ok ? 'text-emerald-300' : 'text-rose-300'}`}>
+                <span className={`text-[9px] uppercase font-semibold ${t.ok ? 'text-emerald-300' : 'text-rose-300'}`}>
                   {t.ok ? 'ok' : t.error || 'fail'}
                 </span>
                 <span className="text-muted-foreground/60 font-mono">{t.duration_ms}ms</span>
