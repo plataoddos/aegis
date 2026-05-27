@@ -407,7 +407,21 @@ export async function runOsintIdentity(
     }
 
     if (p.provider === 'seeknow' && p.endpoint === '/search') {
-      const list: any[] = data?.results || [];
+      // SeekNow /search peut renvoyer `{results: [...]}` ou `{data: [...]}`
+      // ou `{data: {results: [...]}}` selon le déploiement. On essaye dans
+      // l'ordre pour rester compatible avec les futures évolutions.
+      const list: any[] =
+        (Array.isArray(data?.results) && data.results) ||
+        (Array.isArray(data?.data) && data.data) ||
+        (Array.isArray(data?.data?.results) && data.data.results) ||
+        (Array.isArray(data?.matches) && data.matches) ||
+        (Array.isArray(data?.hits) && data.hits) ||
+        (Array.isArray(data) && data) ||
+        [];
+      // Log debug en cas de zéro résultats malgré une réponse valide.
+      if (!list.length && data && typeof data === 'object') {
+        console.warn('[osint] seeknow /search: 0 results, payload keys =', Object.keys(data).slice(0, 10));
+      }
       for (const r of list) {
         const b = seeknowSearchToBreach(r);
         breaches.push(b);
@@ -418,33 +432,48 @@ export async function runOsintIdentity(
     }
 
     if (p.provider === 'seeknow' && p.endpoint === '/network/email-check') {
+      // Le payload utile peut être à la racine ou dans `data.data` selon
+      // la version d'API. On essaie les deux.
+      const d = data?.data && typeof data.data === 'object' ? { ...data, ...data.data } : data;
       const v = String(p.query?.email || '');
       network.email = {
         value:        v,
-        valid:        data?.valid,
-        deliverable:  data?.deliverable,
-        disposable:   data?.disposable,
-        breach_count: data?.breach_count,
-        raw:          data,
+        valid:        d?.valid,
+        deliverable:  d?.deliverable,
+        disposable:   d?.disposable,
+        breach_count: d?.breach_count,
+        raw:          d,
       };
       continue;
     }
     if (p.provider === 'seeknow' && p.endpoint === '/network/phone') {
+      const d = data?.data && typeof data.data === 'object' ? { ...data, ...data.data } : data;
       const v = String(p.query?.phone || '');
       network.phone = {
         value:        v,
-        country:      data?.country,
-        carrier:      data?.carrier,
-        line_type:    data?.line_type,
-        breach_count: data?.breach_count,
-        raw:          data,
+        country:      d?.country,
+        carrier:      d?.carrier,
+        line_type:    d?.line_type,
+        breach_count: d?.breach_count,
+        raw:          d,
       };
       continue;
     }
     if (p.provider === 'seeknow' && p.endpoint === '/username/social') {
-      const found: any[] = data?.found_on || [];
+      // Idem : la liste des plateformes peut être à `found_on`, `platforms`,
+      // `data.found_on`, ou directement à la racine.
+      const found: any[] =
+        (Array.isArray(data?.found_on) && data.found_on) ||
+        (Array.isArray(data?.platforms) && data.platforms) ||
+        (Array.isArray(data?.data?.found_on) && data.data.found_on) ||
+        (Array.isArray(data?.data) && data.data) ||
+        (Array.isArray(data?.results) && data.results) ||
+        [];
+      if (!found.length && data && typeof data === 'object') {
+        console.warn('[osint] seeknow /username/social: 0 hits, payload keys =', Object.keys(data).slice(0, 10));
+      }
       for (const f of found) {
-        social.push({ platform: f.platform, url: f.url });
+        social.push({ platform: f.platform || f.site || f.name, url: f.url || f.profile_url || f.link, profile: f });
       }
       continue;
     }
