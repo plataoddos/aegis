@@ -416,6 +416,7 @@ const SOURCES: { id: string; appliesTo: Kind[]; run: Runner }[] = [
           title: list.length ? `${list.length} profil${list.length > 1 ? 's' : ''}` : 'Aucun profil',
           detail: env?.meta?.took_ms != null ? `${env.meta.took_ms} ms` : undefined,
           profiles: list,
+          provider: 'brixhub',
           durationMs: performance.now() - t0,
         };
       } catch (e: any) {
@@ -444,6 +445,7 @@ const SOURCES: { id: string; appliesTo: Kind[]; run: Runner }[] = [
           title: list.length ? `${list.length} profil${list.length > 1 ? 's' : ''}` : 'Aucun profil',
           detail: env?.meta?.took_ms != null ? `${env.meta.took_ms} ms` : undefined,
           profiles: list,
+          provider: 'brixhub',
           durationMs: performance.now() - t0,
         };
       } catch (e: any) {
@@ -451,10 +453,122 @@ const SOURCES: { id: string; appliesTo: Kind[]; run: Runner }[] = [
       }
     },
   },
+
+  // ── SeekNow runners (mode unique) ───────────────────────────────────────
+  // Chaque kind reçoit ses endpoints SeekNow pertinents. Le rendu utilise
+  // SeeknowProfileCard via le routing par `provider`.
+  ...((): { id: string; appliesTo: Kind[]; run: Runner }[] => {
+    type SkSpec = {
+      id: string;
+      kind: Kind;
+      label: string;
+      key: string;        // SEEKNOW_CATALOG key
+      category: Finding['category'];
+      build: (v: string) => any;
+      list: (data: any) => any[];
+    };
+    const specs: SkSpec[] = [
+      // Email
+      { id: 'sk-search-email',  kind: 'email', key: 'search',         label: 'SeekNow · breach search',  category: 'breach',
+        build: v => ({ query: v, type: 'email', limit: 100 }), list: d => d?.results || [] },
+      { id: 'sk-email-check',   kind: 'email', key: 'network_email',  label: 'SeekNow · email check',    category: 'reputation',
+        build: v => ({ email: v }), list: d => d ? [d] : [] },
+      // Phone
+      { id: 'sk-search-phone',  kind: 'phone', key: 'search',         label: 'SeekNow · breach search',  category: 'breach',
+        build: v => ({ query: v, type: 'phone', limit: 100 }), list: d => d?.results || [] },
+      { id: 'sk-phone',         kind: 'phone', key: 'network_phone',  label: 'SeekNow · phone OSINT',    category: 'identity',
+        build: v => ({ phone: v }), list: d => d ? [d] : [] },
+      // Username
+      { id: 'sk-search-user',   kind: 'username', key: 'search',          label: 'SeekNow · breach search',  category: 'breach',
+        build: v => ({ query: v, type: 'username', limit: 100 }), list: d => d?.results || [] },
+      { id: 'sk-username-soc',  kind: 'username', key: 'username_social',  label: 'SeekNow · réseaux sociaux', category: 'social',
+        build: v => ({ username: v }), list: d => d?.found_on || [] },
+      { id: 'sk-username-hist', kind: 'username', key: 'username_history', label: 'SeekNow · historique',      category: 'identity',
+        build: v => ({ username: v }), list: d => d?.history || [] },
+      // IP
+      { id: 'sk-network-ip',    kind: 'ip', key: 'network_ip',        label: 'SeekNow · IP intel',       category: 'network',
+        build: v => ({ ip: v }), list: d => d ? [d] : [] },
+      { id: 'sk-search-ip',     kind: 'ip', key: 'search',            label: 'SeekNow · breach search',  category: 'breach',
+        build: v => ({ query: v, type: 'ip', limit: 100 }), list: d => d?.results || [] },
+      // Domain
+      { id: 'sk-domain-intel',  kind: 'domain', key: 'domain_intel',  label: 'SeekNow · domain intel',   category: 'network',
+        build: v => ({ domain: v }), list: d => d ? [d] : [] },
+      { id: 'sk-domain-whois',  kind: 'domain', key: 'domain_whois',  label: 'SeekNow · WHOIS',          category: 'network',
+        build: v => ({ domain: v }), list: d => d ? [d] : [] },
+      // Discord
+      { id: 'sk-discord-user',  kind: 'discord', key: 'discord_user',   label: 'SeekNow · Discord user',  category: 'identity',
+        build: v => ({ discord_id: v }), list: d => d ? [d] : [] },
+      { id: 'sk-discord-roblox',kind: 'discord', key: 'discord_roblox', label: 'SeekNow · Discord→Roblox', category: 'social',
+        build: v => ({ discord_id: v }), list: d => d?.roblox ? [d.roblox] : (d ? [d] : []) },
+      // Hash
+      { id: 'sk-search-hash',   kind: 'hash', key: 'search',         label: 'SeekNow · breach search',  category: 'breach',
+        build: v => ({ query: v, type: 'hash', limit: 100 }), list: d => d?.results || [] },
+    ];
+
+    return specs.map(s => ({
+      id: s.id,
+      appliesTo: [s.kind],
+      run: async (t) => {
+        const t0 = performance.now();
+        try {
+          const spec = SEEKNOW_HTTP[s.key] || { method: 'POST' };
+          const route = `/api/seeknow/${s.key}`;
+          const res: any = spec.method === 'GET'
+            ? await apiGet(`${route}?${new URLSearchParams(s.build(t.value)).toString()}`)
+            : await apiPost(route, s.build(t.value));
+          const list = s.list(res?.data);
+          const cached = res?.cached === true;
+          return {
+            id: s.id, source: s.label, category: s.category,
+            status: list.length ? 'ok' : 'empty',
+            severity: list.length ? 'medium' : 'info',
+            title: list.length
+              ? `${list.length} résultat${list.length > 1 ? 's' : ''}${cached ? ' (cache)' : ''}`
+              : 'Aucun résultat',
+            profiles: list,
+            provider: 'seeknow',
+            durationMs: performance.now() - t0,
+          };
+        } catch (e: any) {
+          return errorFinding(s.id, s.label, s.category, e.message, performance.now() - t0);
+        }
+      },
+    }));
+  })(),
 ];
+
+// Cache local des methods HTTP par key SEEKNOW_CATALOG (évite un GET /catalog
+// par appel). Mis à jour côté backend dans seeknow.ts ; on duplique ici les
+// quelques entrées qui sont en GET pour router correctement.
+const SEEKNOW_HTTP: Record<string, { method: 'GET' | 'POST' }> = {
+  search:           { method: 'POST' },
+  stealer:          { method: 'POST' },
+  discord_user:     { method: 'GET'  },
+  discord_roblox:   { method: 'GET'  },
+  username_github:  { method: 'GET'  },
+  username_twitter: { method: 'GET'  },
+  username_tiktok:  { method: 'GET'  },
+  username_reddit:  { method: 'GET'  },
+  username_social:  { method: 'GET'  },
+  username_history: { method: 'GET'  },
+  network_ip:       { method: 'GET'  },
+  network_email:    { method: 'GET'  },
+  network_phone:    { method: 'GET'  },
+  domain_intel:     { method: 'GET'  },
+  domain_whois:     { method: 'GET'  },
+  gaming_xbox:      { method: 'GET'  },
+  gaming_roblox:    { method: 'GET'  },
+  gaming_minecraft: { method: 'GET'  },
+};
 
 function errorFinding(id: string, source: string, category: Finding['category'], msg: string, ms: number): Finding {
   return { id, source, category, status: 'fail', severity: 'low', title: 'Échec', detail: msg, durationMs: ms };
+}
+
+/** Construit un lien Google Maps à partir d'une adresse libre. */
+function gmapsUrl(...parts: (string | undefined | null)[]): string {
+  const q = parts.filter(Boolean).join(', ').trim();
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
 // ── Multi-criteria identity form (BrixHub schema) ──────────────────────────
@@ -856,6 +970,9 @@ export function OsintHub() {
             </div>
           </div>
 
+          {/* Synthesis row: provider breakdown + category counts + total profiles */}
+          <FindingsSummary findings={findings} />
+
           {/* Findings grid: full-width when carrying detailed BrixHub profiles. */}
           <div className="grid gap-3 md:grid-cols-2">
             {findings.map(f => (
@@ -995,6 +1112,67 @@ function MultiCriteriaForm({ identity, setField, onRun, running, queries }: {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Single-mode summary row : récapitule les findings par provider et ─────
+//    catégorie. Le détail reste dans les cartes en-dessous.
+function FindingsSummary({ findings }: { findings: Finding[] }) {
+  if (!findings.length) return null;
+  const totalProfiles = findings.reduce((acc, f) => acc + (f.profiles?.length || 0), 0);
+  const cached = findings.filter(f => f.detail?.includes('cache')).length;
+
+  const byProvider = {
+    brixhub: findings.filter(f => f.provider === 'brixhub'),
+    seeknow: findings.filter(f => f.provider === 'seeknow'),
+    other:   findings.filter(f => !f.provider),
+  };
+  const okOf = (arr: Finding[]) => arr.filter(f => f.status === 'ok').length;
+  const profOf = (arr: Finding[]) => arr.reduce((a, f) => a + (f.profiles?.length || 0), 0);
+
+  const cats: Record<string, number> = {};
+  for (const f of findings) {
+    if (f.status !== 'ok') continue;
+    cats[f.category] = (cats[f.category] || 0) + 1;
+  }
+
+  const Pill = ({ tone, label, value }: { tone: string; label: string; value: React.ReactNode }) => (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md ring-1 ${tone}`}>
+      <span className="opacity-70 uppercase tracking-wider text-[9px] font-bold">{label}</span>
+      <span className="font-semibold tabular-nums">{value}</span>
+    </span>
+  );
+
+  return (
+    <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3 flex flex-wrap items-center gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mr-1">Synthèse</span>
+      <Pill tone="bg-white/[0.03] text-foreground ring-white/10"        label="Profils"  value={totalProfiles} />
+      {cached > 0 && (
+        <Pill tone="bg-emerald-500/10 text-emerald-300 ring-emerald-500/30" label="Cache" value={`${cached}/${findings.length}`} />
+      )}
+      {byProvider.brixhub.length > 0 && (
+        <Pill tone="bg-indigo-500/10 text-indigo-300 ring-indigo-500/30"
+          label="BrixHub" value={`${okOf(byProvider.brixhub)}/${byProvider.brixhub.length} · ${profOf(byProvider.brixhub)} profil${profOf(byProvider.brixhub) > 1 ? 's' : ''}`} />
+      )}
+      {byProvider.seeknow.length > 0 && (
+        <Pill tone="bg-emerald-500/10 text-emerald-300 ring-emerald-500/30"
+          label="SeekNow" value={`${okOf(byProvider.seeknow)}/${byProvider.seeknow.length} · ${profOf(byProvider.seeknow)} résultat${profOf(byProvider.seeknow) > 1 ? 's' : ''}`} />
+      )}
+      {byProvider.other.length > 0 && (
+        <Pill tone="bg-violet-500/10 text-violet-300 ring-violet-500/30"
+          label="OSINT public" value={`${okOf(byProvider.other)}/${byProvider.other.length}`} />
+      )}
+      {Object.keys(cats).length > 0 && (
+        <span className="text-[10px] text-muted-foreground/70 ml-auto flex flex-wrap gap-1.5">
+          {Object.entries(cats).map(([k, v]) => (
+            <span key={k} className="px-1.5 py-0.5 rounded bg-white/[0.03] ring-1 ring-white/5">
+              <span className="opacity-60">{k}</span>
+              <span className="ml-1 font-semibold text-foreground">{v}</span>
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -1422,7 +1600,17 @@ function AggregatedPersonCard({ person: p }: { person: AggregatedPerson }) {
           <Field label="Emails"      value={p.emails && p.emails.length > 1 ? p.emails : undefined} mono />
           <Field label="Téléphone"   value={p.telephone} mono />
           <Field label="Téléphones"  value={p.phones && p.phones.length > 1 ? p.phones : undefined} mono />
-          <Field label="Adresse"     value={[p.adresse, p.code_postal, p.ville].filter(Boolean).join(', ') || undefined} />
+          {(p.adresse || p.ville) && (
+            <div className="flex items-baseline gap-2 text-xs">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold w-24 flex-shrink-0">Adresse</span>
+              <a href={gmapsUrl(p.adresse, p.code_postal, p.ville)}
+                target="_blank" rel="noopener noreferrer"
+                className="text-indigo-300 hover:text-indigo-200 break-all inline-flex items-center gap-1">
+                <span>{[p.adresse, p.code_postal, p.ville].filter(Boolean).join(', ')}</span>
+                <MapPin className="w-3 h-3 opacity-60 flex-shrink-0" />
+              </a>
+            </div>
+          )}
           <Field label="IBAN"        value={p.iban} mono />
           <Field label="NIR"         value={p.nir} mono />
           <Field label="SIRET"       value={p.siret} mono />
@@ -1806,9 +1994,19 @@ function BrixProfileCard({ profile: p, siblings, compact = false }: { profile: a
         {FIELD_GROUPS.map(group => {
           const present = group.keys.filter(k => p[k] != null && p[k] !== '');
           if (!present.length) return null;
+          const isAddrGroup = group.title === 'Adresse';
+          const gmaps = isAddrGroup ? gmapsUrl(p.adresse, p.complement_adresse, p.code_postal, p.ville, p.departement, p.pays) : null;
           return (
             <div key={group.title}>
-              <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1.5">{group.title}</h4>
+              <div className="flex items-center justify-between mb-1.5">
+                <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">{group.title}</h4>
+                {gmaps && (p.adresse || p.ville) && (
+                  <a href={gmaps} target="_blank" rel="noopener noreferrer"
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md font-semibold text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/20 ring-1 ring-indigo-500/30 inline-flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> Google Maps
+                  </a>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1.5 bg-black/30 rounded-lg border border-white/5 p-3">
                 {present.map(k => (
                   <button key={k} onClick={() => copy(k, String(p[k]))}
