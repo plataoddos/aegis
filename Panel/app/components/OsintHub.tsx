@@ -101,8 +101,10 @@ interface Finding {
   title: string;
   detail?: string;
   rows?: { label: string; value: string; mono?: boolean; href?: string }[];
-  /** Raw BrixHub profiles — rendered as detailed cards (richer than `rows`). */
+  /** Raw profiles — rendered as detailed cards. Shape dépend du provider. */
   profiles?: any[];
+  /** Provider d'origine pour router vers le bon renderer. */
+  provider?: 'brixhub' | 'seeknow';
   link?: { href: string; label: string };
   durationMs?: number;
 }
@@ -620,6 +622,7 @@ export function OsintHub() {
           title: `${total} résultat${total > 1 ? 's' : ''}${res?.cached ? ' (cache)' : ''}`,
           detail: took != null ? `${took} ms` : undefined,
           profiles: list,
+          provider: q.provider,
           durationMs: performance.now() - t0,
         };
         if (q.provider === 'brixhub' && res?.credits_remaining != null) setCredits(res.credits_remaining);
@@ -999,7 +1002,9 @@ function FindingCard({ finding: f }: { finding: Finding }) {
       {open && f.profiles && f.profiles.length > 0 && (
         <div className="px-4 pb-4 pt-1 border-t border-white/5 space-y-3">
           {f.profiles.map((p, i) => (
-            <BrixProfileCard key={i} profile={p} siblings={f.profiles} />
+            f.provider === 'seeknow'
+              ? <SeeknowProfileCard key={i} profile={p} />
+              : <BrixProfileCard key={i} profile={p} siblings={f.profiles} />
           ))}
         </div>
       )}
@@ -1121,6 +1126,127 @@ function brixToFiche(p: any): Record<string, any> | { error: string } {
       p.societe ? `Société : ${p.societe}` : null,
     ].filter(Boolean).join('\n') || null,
   };
+}
+
+// ── SeekNow profile card ───────────────────────────────────────────────────
+// Les profils SeekNow ont une forme tr\u00e8s variable selon l'endpoint :
+//  - /search/stealer : { source, email, username, password, ip_address, name, url, machine_id, os, browser, country, ... }
+//  - /username/<plat> : { profile: { ... fields plateforme ... } }
+//  - /username/social : { platform, url } (d\u00e9j\u00e0 unwrap dans `found_on`)
+//  - /network/email   : { valid, deliverable, disposable, breach_count, ... }
+//  - /network/phone   : { country, carrier, line_type, breach_count }
+//  - /network/ip      : { country, city, asn, isp, is_vpn, abuse_score, breach_count }
+//  - /domain/whois    : { registrar, created, expires }
+//  - /gaming/*        : { gamertag|name|uuid, gamerscore, joined, ... }
+// On rend la dict en cl\u00e9/valeur, avec mise en avant des champs sensibles
+// (password, breach_count, abuse_score) et fallback JSON brut au pire.
+function SeeknowProfileCard({ profile: p }: { profile: any }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+
+  const copy = (val: string, label: string) => {
+    navigator.clipboard.writeText(val).then(() => {
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
+
+  // Flatten: si le profil a un sous-objet `profile` (ex. /username/github),
+  // on le hisse au top-level. M\u00eame chose pour `roblox`.
+  const flat: Record<string, any> = (() => {
+    if (!p || typeof p !== 'object') return { value: String(p) };
+    if (p.profile && typeof p.profile === 'object') return { ...p, ...p.profile };
+    return p;
+  })();
+
+  // Champs prioritaires \u00e0 afficher en premier s'ils existent.
+  const PRIORITY = [
+    'source', 'platform', 'url',
+    'name', 'display_name', 'username', 'gamertag', 'login',
+    'email', 'linked_emails',
+    'password', 'machine_id',
+    'phone', 'carrier', 'line_type',
+    'ip', 'ip_address', 'country', 'country_code', 'city',
+    'asn', 'isp', 'org', 'is_vpn',
+    'abuse_score', 'breach_count', 'breach_mentions',
+    'valid', 'deliverable', 'disposable',
+    'registrar', 'created', 'expires',
+    'uuid', 'id', 'user_id', 'discord_id',
+    'os', 'browser',
+    'verified', 'followers', 'public_repos', 'karma', 'gamerscore',
+    'joined',
+  ];
+  const hidden = new Set(['success', 'credits_remaining', 'profile', '_raw']);
+  const sortedKeys = [
+    ...PRIORITY.filter(k => k in flat),
+    ...Object.keys(flat).filter(k => !PRIORITY.includes(k) && !hidden.has(k)),
+  ];
+
+  const sensitiveKeys = new Set(['password', 'machine_id']);
+  const warningKeys   = new Set(['breach_count', 'breach_mentions', 'abuse_score', 'is_vpn', 'disposable']);
+
+  const renderValue = (k: string, v: any): { display: string; mono: boolean; copy: string | null } => {
+    if (v == null) return { display: '\u2014', mono: false, copy: null };
+    if (typeof v === 'boolean') return { display: v ? 'oui' : 'non', mono: true, copy: null };
+    if (Array.isArray(v)) return { display: v.join(', ') || '[]', mono: false, copy: v.join(', ') };
+    if (typeof v === 'object') return { display: JSON.stringify(v), mono: true, copy: JSON.stringify(v) };
+    const s = String(v);
+    const mono = sensitiveKeys.has(k) || /^[0-9a-f-]{8,}$/i.test(s) || /^https?:\/\//.test(s) || /^\d+$/.test(s);
+    return { display: s, mono, copy: s };
+  };
+
+  const headline = flat.source || flat.platform || flat.name || flat.username || flat.email || flat.ip || flat.domain || 'R\u00e9sultat';
+
+  return (
+    <div className="rounded-lg border border-white/5 bg-white/[0.02] overflow-hidden">
+      <div className="px-3 py-2 flex items-center gap-2 bg-white/[0.02]">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-300">SeekNow</span>
+        <span className="text-sm text-foreground font-medium truncate flex-1">{headline}</span>
+        <button onClick={() => setShowRaw(s => !s)}
+          className="text-[10px] text-muted-foreground hover:text-foreground px-2 py-0.5 rounded border border-white/10">
+          {showRaw ? 'vue tableau' : 'JSON brut'}
+        </button>
+      </div>
+
+      {showRaw ? (
+        <pre className="text-[11px] font-mono p-3 max-h-72 overflow-auto whitespace-pre-wrap break-all text-muted-foreground">
+{JSON.stringify(p, null, 2)}
+        </pre>
+      ) : (
+        <div className="divide-y divide-white/5">
+          {sortedKeys.length === 0 && (
+            <div className="px-3 py-2 text-[11px] text-muted-foreground">Profil vide.</div>
+          )}
+          {sortedKeys.map(k => {
+            const r = renderValue(k, flat[k]);
+            const tone = sensitiveKeys.has(k) ? 'text-rose-300'
+                       : warningKeys.has(k)   ? 'text-amber-300'
+                       : 'text-foreground';
+            return (
+              <div key={k} className="flex items-center gap-3 px-3 py-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold w-28 flex-shrink-0">{k}</span>
+                {/^https?:\/\//.test(r.display) ? (
+                  <a href={r.display} target="_blank" rel="noopener noreferrer"
+                    className="text-xs flex-1 break-all text-indigo-300 hover:text-indigo-200 inline-flex items-center gap-1 font-mono">
+                    <span className="truncate">{r.display}</span>
+                    <ExternalLink className="w-3 h-3 opacity-60 flex-shrink-0" />
+                  </a>
+                ) : (
+                  <span className={`text-xs flex-1 break-all ${tone} ${r.mono ? 'font-mono' : ''}`}>{r.display}</span>
+                )}
+                {r.copy && (
+                  <button onClick={() => copy(r.copy!, k)}
+                    className="text-[10px] text-muted-foreground hover:text-foreground p-1 rounded">
+                    {copied === k ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function BrixProfileCard({ profile: p, siblings, compact = false }: { profile: any; siblings?: any[]; compact?: boolean }) {
