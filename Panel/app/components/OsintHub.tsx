@@ -1589,18 +1589,48 @@ function OsintReportView({ report }: { report: OsintReport }) {
       </div>
 
       {/* ── Identités ─────────────────────────────────────────────── */}
-      {report.identities.length > 0 && (
-        <div className="aegis-card aegis-card-edge p-6">
-          <SectionHeader
-            icon={<User className="w-4 h-4 text-indigo-300" />}
-            title="Identités corrélées"
-            count={report.identities.length}
-          />
-          <div className="space-y-3">
-            {report.identities.map(p => <AggregatedPersonCard key={p.id} person={p} />)}
-          </div>
-        </div>
-      )}
+      {/* On sépare deux niveaux : confirmées (match fort = email/phone OU
+          BrixHub avec date/ville) vs possibles (match faible : nom + email
+          local-part, année de naissance dans l'email, etc.). Seuil 50. */}
+      {(() => {
+        const confirmed = report.identities.filter(p => p.confidence >= 50 || p.providers.includes('brixhub'));
+        const possible  = report.identities.filter(p => p.confidence < 50 && !p.providers.includes('brixhub'));
+        return (
+          <>
+            {confirmed.length > 0 && (
+              <div className="aegis-card aegis-card-edge p-6">
+                <SectionHeader
+                  icon={<User className="w-4 h-4 text-indigo-300" />}
+                  title="Identités corrélées"
+                  count={confirmed.length}
+                  badge={<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30">confirmées</span>}
+                />
+                <div className="space-y-3">
+                  {confirmed.map(p => <AggregatedPersonCard key={p.id} person={p} />)}
+                </div>
+              </div>
+            )}
+            {possible.length > 0 && (
+              <div className="aegis-card aegis-card-edge p-6">
+                <SectionHeader
+                  icon={<User className="w-4 h-4 text-amber-300" />}
+                  title="Identités possibles"
+                  count={possible.length}
+                  badge={<span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30">incertain</span>}
+                  action={
+                    <span className="text-[11px] text-muted-foreground">
+                      Match partiel sur les champs renseignés
+                    </span>
+                  }
+                />
+                <div className="space-y-3">
+                  {possible.map(p => <AggregatedPersonCard key={p.id} person={p} />)}
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* ── Brèches ───────────────────────────────────────────────── */}
       {report.breaches.length > 0 && (

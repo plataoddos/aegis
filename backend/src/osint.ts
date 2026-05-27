@@ -247,14 +247,14 @@ function seeknowSearchToBreach(r: any): BreachRecord {
  * perdre le résultat (typiquement quand SeekNow connaît un email que
  * BrixHub ne référence pas en France).
  */
-function breachToPersonHint(b: BreachRecord): Partial<AggregatedPerson> | null {
+function breachToPersonHint(b: BreachRecord, confidence = 0): Partial<AggregatedPerson> | null {
   if (!b.email && !b.username && !b.name) return null;
   return {
     email:       b.email,
     nom_famille: b.name?.split(' ').slice(-1)[0],
     prenom:      b.name?.split(' ').slice(0, -1).join(' ') || undefined,
     providers:   ['seeknow'],
-    confidence:  0,
+    confidence,
     raw:         [{ provider: 'seeknow', profile: b }],
   };
 }
@@ -501,13 +501,60 @@ export async function runOsintIdentity(
       .map(p => String(p).replace(/[^\d+]/g, ''))   // normalisation E.164
       .filter(p => p.length >= 6)
   );
-  for (const b of breaches) {
-    const matchesFormEmail = b.email && formEmails.has(norm(b.email));
+  // Fragments du formulaire utilisés pour scorer les matches "possibles" :
+  // prénom et nom (normalisés, longueur minimale 3 pour éviter les faux
+  // positifs sur "le", "de", etc.) + année de naissance (sur 4 chiffres).
+  const formPrenom    = norm(form.prenom);
+  const formNomFam    = norm(form.nom_famille);
+  const formYear      = (() => {
+    if (form.annee_naissance && /^\d{4}$/.test(form.annee_naissance.trim())) return form.annee_naissance.trim();
+    if (form.date_naissance) {
+      const m = form.date_naissance.match(/(\d{4})/);
+      if (m) return m[1];
+    }
+    return '';
+  })();
+  const formCity      = norm(form.ville);
+  const formCp        = (form.code_postal || '').replace(/\s+/g, '');
+
+  // Score un breach par cohérence avec les champs renseignés.
+  //  - +50  email exact (form.email == breach.email)
+  //  - +50  phone exact (form.telephone|mobile == breach.phone|username)
+  //  - +20  l'email/username local-part contient prénom ET nom (>= 3 chars chacun)
+  //  - +15  l'email/username local-part contient prénom OU nom (>= 3 chars)
+  //  - +15  l'année de naissance apparaît dans l'email/username/extra
+  //  - +10  ville ou code postal apparaît dans `extra`
+  // Seuil de promotion en identité : 30 (possible) ou 50 (confirmé). En
+  // dessous, le record reste seulement dans `breaches[]`.
+  const scoreBreach = (b: BreachRecord): number => {
+    let s = 0;
+    if (b.email && formEmails.has(norm(b.email))) s += 50;
     const breachPhone = (b.extra?.phone || b.extra?.telephone || b.username || '').toString();
     const breachPhoneNorm = breachPhone.replace(/[^\d+]/g, '');
-    const matchesFormPhone = !!(breachPhoneNorm && formPhones.has(breachPhoneNorm));
-    if (matchesFormEmail || matchesFormPhone) {
-      const hint = breachToPersonHint(b);
+    if (breachPhoneNorm && formPhones.has(breachPhoneNorm)) s += 50;
+
+    const localPart = norm((b.email || '').split('@')[0] + ' ' + (b.username || ''));
+    const hasPrenom = formPrenom.length >= 3 && localPart.includes(formPrenom);
+    const hasNom    = formNomFam.length >= 3 && localPart.includes(formNomFam);
+    if (hasPrenom && hasNom)        s += 20;
+    else if (hasPrenom || hasNom)   s += 15;
+
+    if (formYear) {
+      const haystack = `${b.email || ''} ${b.username || ''} ${JSON.stringify(b.extra || {})}`;
+      if (haystack.includes(formYear)) s += 15;
+    }
+    if (formCity || formCp) {
+      const extraStr = JSON.stringify(b.extra || {}).toLowerCase();
+      if (formCity && formCity.length >= 3 && extraStr.includes(formCity)) s += 10;
+      if (formCp   && formCp.length   >= 4 && extraStr.includes(formCp))   s += 10;
+    }
+    return s;
+  };
+
+  for (const b of breaches) {
+    const score = scoreBreach(b);
+    if (score >= 30) {
+      const hint = breachToPersonHint(b, score);
       if (hint) upsertPerson(hint);
     }
   }
